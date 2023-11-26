@@ -1,2 +1,2 @@
 # cmake-presets
-CMake presets generator
+CMake presets generator written in python
