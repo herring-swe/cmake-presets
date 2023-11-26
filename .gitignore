@@ -1,3 +1,5 @@
+# TODO: Go through this file...
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
@@ -54,6 +56,12 @@ cover/
 # Translations
 *.mo
 *.pot
+
+# VS-Code stuff
+
+.vscode/*
+!.vscode/settings.json
+.history/
 
 # Django stuff:
 *.log

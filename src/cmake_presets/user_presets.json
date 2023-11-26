@@ -1,0 +1,124 @@
+{
+    "version": 7,
+    "configurePresets": [
+        {
+            "name": "env_base",
+            "hidden": true,
+            "environment": {
+                "POCO_GCC82": "/ansysdev/cmake_deps/gcc82/poco-current",
+                "WX3_GCC82_DEBUG": "/ansysdev/cmake_deps/gcc82/wx3-current-debug",
+                "WX3_GCC82_RELEASE": "/ansysdev/cmake_deps/gcc82/wx3-current-release",
+                "POCO_VS2019": "C:/ansysdev/cmake_deps/vs2019/poco-current",
+                "WX3_VS2019": "C:/ansysdev/cmake_deps/vs2019/wx3-current"
+            }
+        },
+        {
+            "name": "toolkit_vs2019",
+            "hidden": true
+        },
+        {
+            "name": "toolkit_gcc820",
+            "hidden": true,
+            "environment": {
+                "PATH": "/home/asvedin/apps/gcc8/bin:$penv{PATH}",
+                "CC": "/home/asvedin/apps/gcc8/bin/gcc",
+                "CXX": "/home/asvedin/apps/gcc8/bin/g++"
+            },
+            "cacheVariables": {
+                "CMAKE_C_COMPILER": "/home/asvedin/apps/gcc8/bin/gcc",
+                "CMAKE_CXX_COMPILER": "/home/asvedin/apps/gcc8/bin/g++"
+            }
+        },
+        {
+            "name": "toolkit_oneapi2021",
+            "hidden": true,
+            "environment": {
+                "LIBRARY_PATH": "/home/asvedin/intel/oneapi/mpi/2021.3.0//libfabric/lib:/home/asvedin/intel/oneapi/mpi/2021.3.0//lib/release:/home/asvedin/intel/oneapi/mpi/2021.3.0//lib:/home/asvedin/intel/oneapi/tbb/2021.3.0/env/../lib/intel64/gcc4.8:/home/asvedin/intel/oneapi/mkl/2021.3.0/lib/intel64:/home/asvedin/intel/oneapi/compiler/2021.3.0/linux/compiler/lib/intel64_lin:/home/asvedin/intel/oneapi/compiler/2021.3.0/linux/lib",
+                "MKLROOT": "/home/asvedin/intel/oneapi/mkl/2021.3.0",
+                "CLASSPATH": "/home/asvedin/intel/oneapi/mpi/2021.3.0//lib/mpi.jar",
+                "OCL_ICD_FILENAMES": "/home/asvedin/intel/oneapi/compiler/2021.3.0/linux/lib/x64/libintelocl.so",
+                "FC": "/home/asvedin/intel/oneapi/compiler/2021.3.0/linux/bin/intel64/ifort",
+                "MANPATH": "/home/asvedin/intel/oneapi/mpi/2021.3.0/man:/home/asvedin/intel/oneapi/compiler/2021.3.0/documentation/en/man/common::",
+                "LD_LIBRARY_PATH": "/home/asvedin/intel/oneapi/mpi/2021.3.0//libfabric/lib:/home/asvedin/intel/oneapi/mpi/2021.3.0//lib/release:/home/asvedin/intel/oneapi/mpi/2021.3.0//lib:/home/asvedin/intel/oneapi/tbb/2021.3.0/env/../lib/intel64/gcc4.8:/home/asvedin/intel/oneapi/mkl/2021.3.0/lib/intel64:/home/asvedin/intel/oneapi/compiler/2021.3.0/linux/lib:/home/asvedin/intel/oneapi/compiler/2021.3.0/linux/lib/x64:/home/asvedin/intel/oneapi/compiler/2021.3.0/linux/lib/emu:/home/asvedin/intel/oneapi/compiler/2021.3.0/linux/compiler/lib/intel64_lin",
+                "CMPLR_ROOT": "/home/asvedin/intel/oneapi/compiler/2021.3.0",
+                "CPATH": "/home/asvedin/intel/oneapi/mpi/2021.3.0//include:/home/asvedin/intel/oneapi/tbb/2021.3.0/env/../include:/home/asvedin/intel/oneapi/mkl/2021.3.0/include:/home/asvedin/intel/oneapi/compiler/2021.3.0/linux/include",
+                "I_MPI_ROOT": "/home/asvedin/intel/oneapi/mpi/2021.3.0",
+                "NLSPATH": "/home/asvedin/intel/oneapi/mkl/2021.3.0/lib/intel64/locale/%l_%t/%N",
+                "FI_PROVIDER_PATH": "/home/asvedin/intel/oneapi/mpi/2021.3.0//libfabric/lib/prov:/usr/lib64/libfabric",
+                "TBBROOT": "/home/asvedin/intel/oneapi/tbb/2021.3.0/env/..",
+                "CMAKE_PREFIX_PATH": "/home/asvedin/intel/oneapi/tbb/2021.3.0/env/..",
+                "PATH": "/home/asvedin/intel/oneapi/mpi/2021.3.0//bin:/home/asvedin/intel/oneapi/compiler/2021.3.0/linux/bin:/home/asvedin/intel/oneapi/mpi/2021.3.0//libfabric/bin:/home/asvedin/intel/oneapi/compiler/2021.3.0/linux/bin/intel64:/home/asvedin/intel/oneapi/mkl/2021.3.0/bin/intel64:$penv{PATH}",
+                "PKG_CONFIG_PATH": "/home/asvedin/intel/oneapi/mkl/2021.3.0/tools/pkgconfig"
+            },
+            "cacheVariables": {
+                "CMAKE_Fortran_COMPILER": "/home/asvedin/intel/oneapi/compiler/2021.3.0/linux/bin/intel64/ifort"
+            }
+        },
+        {
+            "name": "toolkit_toolkit_vs2019_toolkit_oneapi2021",
+            "hidden": true
+        },
+        {
+            "name": "toolkit_toolkit_gcc820_toolkit_oneapi2021",
+            "hidden": true,
+            "environment": {
+                "PATH": "/home/asvedin/apps/gcc8/bin",
+                "CC": "/home/asvedin/apps/gcc8/bin/gcc",
+                "CXX": "/home/asvedin/apps/gcc8/bin/g++",
+                "PKG_CONFIG_PATH": "/home/asvedin/intel/oneapi/mkl/2021.3.0/tools/pkgconfig",
+                "CMAKE_PREFIX_PATH": "/home/asvedin/intel/oneapi/tbb/2021.3.0/env/..",
+                "OCL_ICD_FILENAMES": "/home/asvedin/intel/oneapi/compiler/2021.3.0/linux/lib/x64/libintelocl.so",
+                "NLSPATH": "/home/asvedin/intel/oneapi/mkl/2021.3.0/lib/intel64/locale/%l_%t/%N",
+                "CPATH": "/home/asvedin/intel/oneapi/mpi/2021.3.0//include:/home/asvedin/intel/oneapi/tbb/2021.3.0/env/../include:/home/asvedin/intel/oneapi/mkl/2021.3.0/include:/home/asvedin/intel/oneapi/compiler/2021.3.0/linux/include",
+                "CMPLR_ROOT": "/home/asvedin/intel/oneapi/compiler/2021.3.0",
+                "FI_PROVIDER_PATH": "/home/asvedin/intel/oneapi/mpi/2021.3.0//libfabric/lib/prov:/usr/lib64/libfabric",
+                "CLASSPATH": "/home/asvedin/intel/oneapi/mpi/2021.3.0//lib/mpi.jar",
+                "MANPATH": "/home/asvedin/intel/oneapi/mpi/2021.3.0/man:/home/asvedin/intel/oneapi/compiler/2021.3.0/documentation/en/man/common::",
+                "MKLROOT": "/home/asvedin/intel/oneapi/mkl/2021.3.0",
+                "I_MPI_ROOT": "/home/asvedin/intel/oneapi/mpi/2021.3.0",
+                "LD_LIBRARY_PATH": "/home/asvedin/intel/oneapi/mpi/2021.3.0//libfabric/lib:/home/asvedin/intel/oneapi/mpi/2021.3.0//lib/release:/home/asvedin/intel/oneapi/mpi/2021.3.0//lib:/home/asvedin/intel/oneapi/tbb/2021.3.0/env/../lib/intel64/gcc4.8:/home/asvedin/intel/oneapi/mkl/2021.3.0/lib/intel64:/home/asvedin/intel/oneapi/compiler/2021.3.0/linux/lib:/home/asvedin/intel/oneapi/compiler/2021.3.0/linux/lib/x64:/home/asvedin/intel/oneapi/compiler/2021.3.0/linux/lib/emu:/home/asvedin/intel/oneapi/compiler/2021.3.0/linux/compiler/lib/intel64_lin",
+                "FC": "/home/asvedin/intel/oneapi/compiler/2021.3.0/linux/bin/intel64/ifort",
+                "LIBRARY_PATH": "/home/asvedin/intel/oneapi/mpi/2021.3.0//libfabric/lib:/home/asvedin/intel/oneapi/mpi/2021.3.0//lib/release:/home/asvedin/intel/oneapi/mpi/2021.3.0//lib:/home/asvedin/intel/oneapi/tbb/2021.3.0/env/../lib/intel64/gcc4.8:/home/asvedin/intel/oneapi/mkl/2021.3.0/lib/intel64:/home/asvedin/intel/oneapi/compiler/2021.3.0/linux/compiler/lib/intel64_lin:/home/asvedin/intel/oneapi/compiler/2021.3.0/linux/lib",
+                "TBBROOT": "/home/asvedin/intel/oneapi/tbb/2021.3.0/env/.."
+            },
+            "cacheVariables": {
+                "CMAKE_C_COMPILER": "/home/asvedin/apps/gcc8/bin/gcc",
+                "CMAKE_CXX_COMPILER": "/home/asvedin/apps/gcc8/bin/g++",
+                "CMAKE_Fortran_COMPILER": "/home/asvedin/intel/oneapi/compiler/2021.3.0/linux/bin/intel64/ifort"
+            }
+        },
+        {
+            "name": "toolkit_vs2019_oneapi2021",
+            "hidden": true
+        },
+        {
+            "name": "toolkit_gcc820_oneapi2021",
+            "hidden": true,
+            "environment": {
+                "PATH": "/home/asvedin/intel/oneapi/mpi/2021.3.0//bin:/home/asvedin/intel/oneapi/compiler/2021.3.0/linux/bin:/home/asvedin/intel/oneapi/mpi/2021.3.0//libfabric/bin:/home/asvedin/intel/oneapi/compiler/2021.3.0/linux/bin/intel64:/home/asvedin/intel/oneapi/mkl/2021.3.0/bin/intel64:/home/asvedin/apps/gcc8/bin:$penv{PATH}",
+                "CC": "/home/asvedin/apps/gcc8/bin/gcc",
+                "CXX": "/home/asvedin/apps/gcc8/bin/g++",
+                "LIBRARY_PATH": "/home/asvedin/intel/oneapi/mpi/2021.3.0//libfabric/lib:/home/asvedin/intel/oneapi/mpi/2021.3.0//lib/release:/home/asvedin/intel/oneapi/mpi/2021.3.0//lib:/home/asvedin/intel/oneapi/tbb/2021.3.0/env/../lib/intel64/gcc4.8:/home/asvedin/intel/oneapi/mkl/2021.3.0/lib/intel64:/home/asvedin/intel/oneapi/compiler/2021.3.0/linux/compiler/lib/intel64_lin:/home/asvedin/intel/oneapi/compiler/2021.3.0/linux/lib",
+                "MKLROOT": "/home/asvedin/intel/oneapi/mkl/2021.3.0",
+                "CLASSPATH": "/home/asvedin/intel/oneapi/mpi/2021.3.0//lib/mpi.jar",
+                "OCL_ICD_FILENAMES": "/home/asvedin/intel/oneapi/compiler/2021.3.0/linux/lib/x64/libintelocl.so",
+                "FC": "/home/asvedin/intel/oneapi/compiler/2021.3.0/linux/bin/intel64/ifort",
+                "MANPATH": "/home/asvedin/intel/oneapi/mpi/2021.3.0/man:/home/asvedin/intel/oneapi/compiler/2021.3.0/documentation/en/man/common::",
+                "LD_LIBRARY_PATH": "/home/asvedin/intel/oneapi/mpi/2021.3.0//libfabric/lib:/home/asvedin/intel/oneapi/mpi/2021.3.0//lib/release:/home/asvedin/intel/oneapi/mpi/2021.3.0//lib:/home/asvedin/intel/oneapi/tbb/2021.3.0/env/../lib/intel64/gcc4.8:/home/asvedin/intel/oneapi/mkl/2021.3.0/lib/intel64:/home/asvedin/intel/oneapi/compiler/2021.3.0/linux/lib:/home/asvedin/intel/oneapi/compiler/2021.3.0/linux/lib/x64:/home/asvedin/intel/oneapi/compiler/2021.3.0/linux/lib/emu:/home/asvedin/intel/oneapi/compiler/2021.3.0/linux/compiler/lib/intel64_lin",
+                "CMPLR_ROOT": "/home/asvedin/intel/oneapi/compiler/2021.3.0",
+                "CPATH": "/home/asvedin/intel/oneapi/mpi/2021.3.0//include:/home/asvedin/intel/oneapi/tbb/2021.3.0/env/../include:/home/asvedin/intel/oneapi/mkl/2021.3.0/include:/home/asvedin/intel/oneapi/compiler/2021.3.0/linux/include",
+                "I_MPI_ROOT": "/home/asvedin/intel/oneapi/mpi/2021.3.0",
+                "NLSPATH": "/home/asvedin/intel/oneapi/mkl/2021.3.0/lib/intel64/locale/%l_%t/%N",
+                "FI_PROVIDER_PATH": "/home/asvedin/intel/oneapi/mpi/2021.3.0//libfabric/lib/prov:/usr/lib64/libfabric",
+                "TBBROOT": "/home/asvedin/intel/oneapi/tbb/2021.3.0/env/..",
+                "CMAKE_PREFIX_PATH": "/home/asvedin/intel/oneapi/tbb/2021.3.0/env/..",
+                "PKG_CONFIG_PATH": "/home/asvedin/intel/oneapi/mkl/2021.3.0/tools/pkgconfig"
+            },
+            "cacheVariables": {
+                "CMAKE_C_COMPILER": "/home/asvedin/apps/gcc8/bin/gcc",
+                "CMAKE_CXX_COMPILER": "/home/asvedin/apps/gcc8/bin/g++",
+                "CMAKE_Fortran_COMPILER": "/home/asvedin/intel/oneapi/compiler/2021.3.0/linux/bin/intel64/ifort"
+            }
+        }
+    ]
+}

@@ -1,0 +1,78 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "cmake-presets"
+version = "0.1.0"
+authors = [
+  { name="Åke Svedin", email="ake.svedin@gmail.com" },
+]
+description = "Tool to create CMake presets based on available system compilers such or via running environment setup scripts."
+readme = "README.md"
+requires-python = ">=3.6"
+classifiers = [
+    'Development Status :: 2 - Pre-Alpha',
+    "Programming Language :: Python :: 3",
+    'Programming Language :: Python :: 3.6',
+    "License :: OSI Approved :: MIT License",
+    'Natural Language :: English',
+    'Environment :: Console',
+    'Operating System :: Microsoft :: Windows',
+    'Operating System :: POSIX :: Linux',
+    'Intended Audience :: Developers',
+    'Topic :: Software Development :: Compilers',
+    'Topic :: Software Development :: Build Tools',
+    'Topic :: Software Development :: Code Generators',
+    'Topic :: Software Development :: Pre-processors',
+    'Topic :: Utilities'
+]
+
+[project.scripts]
+cmake_presets = "cmake_presets.cli"
+
+[project.urls]
+Homepage = "https://github.com/pypa/sampleproject"
+Issues = "https://github.com/pypa/sampleproject/issues"
+
+[tool.pytest.ini_options]
+minversion = "6.0"
+addopts = "-ra -q"
+log_cli = 1
+testpaths = [
+    "tests"
+]
+pythonpath = [
+  "src"
+]
+
+# Project use ruff for linting and formatting (black compatible)
+# Ruff homepage: https://docs.astral.sh/ruff/
+# vscode plugin: charliermarsh.ruff
+[tool.ruff]
+# Target py37 as the lowest supported by ruff
+line-length = 88
+indent-width = 4
+target-version = "py37"
+
+# Update this
+exclude = [".direnv", ".eggs", ".git", ".git-rewrite", ".mypy_cache",
+           ".nox", ".pants.d", ".pytype", ".ruff_cache", ".svn", ".tox",
+           ".venv", "__pypackages__", "_build", "buck-out", "build",
+           "install", "cmake_build", "cmake_install", "dist", "node_modules", "venv"]
+
+[tool.ruff.lint]
+select = ["E4", "E7", "E9", "F", "B", "Q", "C", "N", "S", "FA", "ICN", "G", "ANN", "UP"]
+ignore = ["FA100", "ANN101", "ANN102", "ANN401", "S603"]
+
+[tool.ruff.lint.per-file-ignores]
+"**/{tests,docs,tools}/*" = ["S101"]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+skip-magic-trailing-comma = false
+line-ending = "lf"
+
+[tool.ruff.lint.mccabe]
+max-complexity = 18
