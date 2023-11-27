@@ -10,7 +10,7 @@ from typing import Any, Dict, List, Sequence, Set, TypeVar, Union
 VersionType = TypeVar("VersionType", bound="Version")
 EnvDictType = TypeVar("EnvDictType", bound="EnvDict")
 SingletonABCMetaType = TypeVar("SingletonABCMetaType", bound="SingletonABCMeta")
-
+log = logging.getLogger(__name__)
 
 # fmt: off
 if sys.version_info >= (3, 8):
@@ -86,7 +86,9 @@ class Version(Sequence[int]):
                     break
                 self.parts.append(v)
         elif isinstance(val, str):
-            raise ValueError(f"Initialization from string needs to go through Version.make: {val}")
+            raise ValueError(
+                f"Initialization from string needs to go through Version.make: {val}"
+            )
         elif isinstance(val, list):
             for i in range(min(4, len(val))):
                 ival = int(val[i])
@@ -98,7 +100,11 @@ class Version(Sequence[int]):
 
     @classmethod
     def make(
-        cls, val: Union[str, "Version", None], minlen: int = 1, maxlen: int = 4, sep: str = "."
+        cls,
+        val: Union[str, "Version", None],
+        minlen: int = 1,
+        maxlen: int = 4,
+        sep: str = ".",
     ) -> "Version":
         """Same as constructor but only accept string, Version or None. None will return None"""
         if not val:
@@ -125,7 +131,11 @@ class Version(Sequence[int]):
 
     @classmethod
     def make_safe(
-        cls, val: Union[str, "Version", None], minlen: int = 1, maxlen: int = 4, sep: str = "."
+        cls,
+        val: Union[str, "Version", None],
+        minlen: int = 1,
+        maxlen: int = 4,
+        sep: str = ".",
     ) -> "Version":
         """Same as make() but catches exceptions and return empty version"""
         try:
@@ -135,7 +145,7 @@ class Version(Sequence[int]):
         return Version()
 
     def string(self, maxnum: int = 4, sep: str = ".") -> str:
-        if not(self):
+        if not (self):
             return "Unspecified"
         maxnum = min(len(self), maxnum)
         return sep.join([str(self.parts[i]) for i in range(maxnum)])
@@ -288,21 +298,19 @@ class EnvDict(StrUserDict):
                 if name in pathvars:
                     diff = EnvDict.diff_path(other[name], self[name])
                     result[name] = diff
-                    logging.debug(
-                        "Env: Difference on path variable %s = %s", name, diff
-                    )
+                    log.debug("Env: Difference on path variable %s = %s", name, diff)
                 else:
                     result[name] = self[name]
-                    logging.warning(
+                    log.warning(
                         "Env: Unhandled difference on variable %s, replacing", name
                     )
             elif name in self:
-                logging.debug(
+                log.debug(
                     "Env: Added new environment variable %s = %s", name, self[name]
                 )
                 result[name] = self[name]
             else:
-                logging.warning(
+                log.warning(
                     "Env: Ignored removal of environment variable %s = %s",
                     name,
                     other[name],

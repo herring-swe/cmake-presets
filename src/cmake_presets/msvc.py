@@ -1,14 +1,18 @@
-import os
 import json
-import platform
 import logging
-from subprocess import check_output, CalledProcessError
+import os
+import platform
+from argparse import Namespace, _ArgumentGroup
 from functools import total_ordering
-from typing import Set, List, Dict, Any, Union, TypeVar
-from argparse import _ArgumentGroup, Namespace
+from subprocess import CalledProcessError, check_output
+from typing import Any, Dict, List, Set, TypeVar, Union
+
 from .toolkit import Toolkit
-from .util import Version, ScanError
-from .util import override  # Compatibility imports
+from .util import (
+    ScanError,
+    Version,
+    override,  # Compatibility imports
+)
 
 log = logging.getLogger(__name__)
 MSVCType = TypeVar("MSVCType", bound="MSVC")
@@ -137,9 +141,7 @@ class MSVC:
                     log.info("     Build Tool: %s", tool.version)
                     log.info("                 %s", ", ".join(tool.tool_names()))
         else:
-            log.info(
-                " * Product: %s - %s", self.displayName, self.displayVersion
-            )
+            log.info(" * Product: %s - %s", self.displayName, self.displayVersion)
             if list_buildtools:
                 for tool in self.vcBuildTools:
                     log.info("   * Build Tool: %s", tool.version)
@@ -162,7 +164,9 @@ class MSVC:
         if "catalog" in json:
             catalog = json["catalog"]
             if not isinstance(catalog, dict):
-                raise ScanError(f"Catalog is not of expected type (type is {type(dict)})")
+                raise ScanError(
+                    f"Catalog is not of expected type (type is {type(dict)})"
+                )
             obj.productVersion = Version.make(catalog.get("productLineVersion", ""))
             obj.displayVersion = Version.make(catalog.get("productDisplayVersion", ""))
             obj.fullVersion = Version.make(catalog.get("buildVersion", ""))

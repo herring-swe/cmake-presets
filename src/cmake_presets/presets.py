@@ -78,7 +78,7 @@ def generate_presets_file(
     pr_errors = set()
     for kit in toolkits:
         if kit.is_instance_supported():
-            logging.debug("generate: Current toolkit %s", kit.name)
+            log.debug("generate: Current toolkit %s", kit.name)
             try:
                 if not kit.scan(select=True):
                     raise ToolkitError("No matches found")
@@ -96,7 +96,7 @@ def generate_presets_file(
                     raise e
         else:
             # Make sure at least empty configuration is in place. No modification of existing
-            logging.debug("Skipping unsupported toolkit: %s", kit.name)
+            log.debug("Skipping unsupported toolkit: %s", kit.name)
             add_preset(data, kit.get_base_json())
             pr_skipped.add(kit.name)
 

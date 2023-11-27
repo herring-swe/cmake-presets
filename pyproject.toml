@@ -29,7 +29,7 @@ classifiers = [
 ]
 
 [project.scripts]
-cmake_presets = "cmake_presets.cli"
+cmake_presets = "cmake_presets.cli:main"
 
 [project.urls]
 Homepage = "https://github.com/pypa/sampleproject"

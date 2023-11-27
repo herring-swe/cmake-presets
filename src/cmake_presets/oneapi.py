@@ -2,7 +2,7 @@ import logging
 import os
 import platform
 import sys
-from argparse import _ArgumentGroup, Namespace
+from argparse import Namespace, _ArgumentGroup
 from functools import total_ordering
 from typing import Any, Dict, Iterable, List, NamedTuple, Set, TypeVar, Union
 
@@ -31,7 +31,7 @@ class _CompDirs(NamedTuple):
 
 @total_ordering
 class OneAPI:
-    COMPONENTS = ["compiler", "mkl"] #, "tbb", "mpi"]
+    COMPONENTS = ["compiler", "mkl"]  # , "tbb", "mpi"]
     FORTRAN = ["ifx", "ifort"]
     TARGET = "intel64"
 

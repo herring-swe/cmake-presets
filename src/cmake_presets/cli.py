@@ -1,7 +1,7 @@
-import sys
 import logging
-from inspect import isabstract
+import sys
 from argparse import ArgumentParser
+from inspect import isabstract
 
 from .toolkit import ToolkitError, get_toolkits
 
@@ -9,6 +9,7 @@ from .toolkit import ToolkitError, get_toolkits
 class CLIFormatter(logging.Formatter):
     # Windows 10 added ANSI color support so let's assume this is okay.
     # 256 color should be perfectly fine as well
+    # fmt: off
     WHITE       = "\x1b[0;37m"
     YELLOW      = "\x1b[0;33m"
     RED         = "\x1b[0;31m"
@@ -16,8 +17,11 @@ class CLIFormatter(logging.Formatter):
     RESET       = "\x1b[0m"
     CYAN        = "\x1b[0;36m"
     SEP         = WHITE + ":" + RESET
+    # fmt: on
 
-    DEBUG = logging.Formatter(f"{WHITE}%(levelname)s - {CYAN}%(name)s{RESET}{SEP} %(message)s")
+    DEBUG = logging.Formatter(
+        f"{WHITE}%(levelname)s - {CYAN}%(name)s{RESET}{SEP} %(message)s"
+    )
     INFO = logging.Formatter("%(message)s")
     WARNING = logging.Formatter(f"{YELLOW}%(levelname)s{RESET}{SEP} %(message)s")
     ERROR = logging.Formatter(f"{RED}%(levelname)s{RESET}{SEP} %(message)s")
@@ -41,7 +45,7 @@ class CLIFormatter(logging.Formatter):
 
 def setup_cli_logging() -> logging.Logger:
     ch = logging.StreamHandler(sys.stdout)
-    #ch.setLevel(logging.DEBUG)
+    # ch.setLevel(logging.DEBUG)
     ch.setFormatter(CLIFormatter())
 
     log = logging.getLogger(__package__)
@@ -68,9 +72,7 @@ def main() -> None:
     parser.add_argument(
         "-v", "--verbose", action="store_true", help="show more information"
     )
-    parser.add_argument(
-        "--debug", action="store_true", help="show debug messages"
-    )
+    parser.add_argument("--debug", action="store_true", help="show debug messages")
 
     for cls in get_toolkits().values():
         if isabstract(cls):

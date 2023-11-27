@@ -7,7 +7,7 @@ import stat
 import subprocess
 import sys
 from abc import ABCMeta, abstractmethod
-from argparse import _ArgumentGroup, Namespace
+from argparse import Namespace, _ArgumentGroup
 from copy import deepcopy
 from tempfile import TemporaryDirectory
 from typing import Any, Dict, List, NamedTuple, Set, Tuple, TypeVar, Union
@@ -29,9 +29,6 @@ _TOOLKITS: Dict[str, "Toolkit"] = {}
 _DEBUG = False
 
 if _DEBUG:
-    #logging.basicConfig(format="%(levelname)s: %(message)s", level=logging.DEBUG)
-    logging.basicConfig(level=logging.DEBUG)
-
     log.warning("DEBUG root log handler is enabled")
 
     def _is_abstract(method: ...) -> bool:
@@ -329,8 +326,8 @@ class Toolkit(metaclass=ABCMeta):  # FIXME: Rename to Generator
             with open(tmpfile, "w", encoding="utf-8") as f:
                 f.write(script)
             if debuglog:
-                logging.debug("Wrote script to: %s", tmpfile)
-                logging.debug(script)
+                log.debug("Wrote script to: %s", tmpfile)
+                log.debug(script)
 
             if not is_win:
                 st = os.stat(tmpfile)
@@ -353,7 +350,7 @@ class Toolkit(metaclass=ABCMeta):  # FIXME: Rename to Generator
                     if line == self._MARKER:
                         seek_marker = False
                     elif debuglog:
-                        logging.debug("> %s", line)  # Line from script
+                        log.debug("> %s", line)  # Line from script
                     continue
 
                 p = line.split("=", 1)
@@ -375,10 +372,12 @@ class Toolkit(metaclass=ABCMeta):  # FIXME: Rename to Generator
             val = env.get(name, "")
         if val:
             if os.path.isabs(val):
-                print(f"Resolved {desc} as: {val}")
+                log.info("Resolved %s as: %s", desc, val)
             elif "PATH" in env:
-                # logging.debug("Resolving %s %s in PATH: %s", desc, val, env["PATH"])
+                # log.debug("Resolving %s %s in PATH: %s", desc, val, env["PATH"])
                 val = shutil.which(val, path=env["PATH"])
+                if val:
+                    log.info("Resolved %s as: %s", desc, val)
         if not val:
             if name in self.required_vars:
                 raise ToolkitError(f"Could not resolve {desc}")
@@ -392,13 +391,15 @@ class Toolkit(metaclass=ABCMeta):  # FIXME: Rename to Generator
         vars = {}
         val = self._resolve_exe("CC", desc="C compiler", env=env)
         if val:
-            vars["CMAKE_C_COMPILER"] = val
+            vars["CMAKE_C_COMPILER"] = val.replace("\\", "/")
+
         val = self._resolve_exe("CXX", desc="C++ compiler", env=env)
         if val:
-            vars["CMAKE_CXX_COMPILER"] = val
+            vars["CMAKE_CXX_COMPILER"] = val.replace("\\", "/")
+
         val = self._resolve_exe("FC", desc="Fortran compiler", env=env)
         if val:
-            vars["CMAKE_Fortran_COMPILER"] = val
+            vars["CMAKE_Fortran_COMPILER"] = val.replace("\\", "/")
         return vars
 
     ############################################################
@@ -459,15 +460,14 @@ class ScriptToolkit(Toolkit):
     def scan(self, select: bool = False) -> bool:
         """In this case we only need to verify script existence"""
         if os.path.isfile(self.script):
-            print(self.desc)
             return True
         else:
-            logging.error("Script does not exist: %s", self.script)
+            log.error("Script does not exist: %s", self.script)
         return False
 
     @override
     def print(self, detailed: bool = False) -> None:
-        log.info("%s: %s", self.get_toolkit_name(), self.script)
+        log.info(" * %s: %s", self.get_toolkit_name(), self.script)
 
     @override
     def _get_env_script(self) -> str:
@@ -549,7 +549,6 @@ class ToolkitChain(Toolkit):
         super().__init__(name, required_vars)
 
     def _get_prev_toolkit(self, idx: int) -> Union[Toolkit, None]:
-        print(f"_GetPreviousToolkit: idx {idx}, toolkits: {self._toolkits}")
         if idx > 0:
             return self._toolkits[idx - 1]
         return None
@@ -602,7 +601,7 @@ class ToolkitChain(Toolkit):
         return True
 
     @override
-    def print(self, detailed: bool=False) -> None:
+    def print(self, detailed: bool = False) -> None:
         for toolkit in self._toolkits:
             toolkit.print(detailed=detailed)
 

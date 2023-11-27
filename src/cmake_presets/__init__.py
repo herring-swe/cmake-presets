@@ -1,10 +1,17 @@
-from .presets import generate_presets_file
-from .toolkit import ToolkitChain, BatScriptToolkit, ShellScriptToolkit, get_toolkits
-from .msvc import MSVCToolkit
 from .gcc import GCCToolkit
+from .msvc import MSVCToolkit
 from .oneapi import OneAPIToolkit
+from .presets import generate_presets_file
+from .toolkit import (
+    BatScriptToolkit,
+    ShellScriptToolkit,
+    Toolkit,
+    ToolkitChain,
+    get_toolkits,
+)
 
 __all__ = [
+    "Toolkit",
     "ToolkitChain",
     "BatScriptToolkit",
     "ShellScriptToolkit",
@@ -12,5 +19,5 @@ __all__ = [
     "GCCToolkit",
     "OneAPIToolkit",
     "generate_presets_file",
-    "get_toolkits"
+    "get_toolkits",
 ]

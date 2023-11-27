@@ -1,15 +1,20 @@
+import logging
 import os
 import platform
 import re
 import subprocess
-import logging
+from argparse import Namespace, _ArgumentGroup
 from functools import total_ordering
-from typing import Any, List, Set, Dict, Union, TypeVar
-from argparse import _ArgumentGroup, Namespace
+from typing import Any, Dict, List, Set, TypeVar, Union
 
 from .toolkit import Toolkit
-from .util import Version, EnvDict, ScanError, expand_dirs
-from .util import override  # Compatibility imports
+from .util import (
+    EnvDict,
+    ScanError,
+    Version,
+    expand_dirs,
+    override,  # Compatibility imports
+)
 
 log = logging.getLogger(__name__)
 GCCType = TypeVar("GCCType", bound="GCC")

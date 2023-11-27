@@ -1,32 +1,19 @@
 #!/usr/bin/python3
 
 import sys
-from typing import Tuple, Set
+from typing import List, Set, Tuple
 
 from cmake_presets import (  # type: ignore
     GCCToolkit,
     MSVCToolkit,
     OneAPIToolkit,
+    Toolkit,
     ToolkitChain,
     generate_presets_file,
 )
 
 
 def main(skip_bad: bool = False) -> Tuple[Set[str], Set[str], Set[str]]:
-    static_presets = [
-        {
-            "name": "env_base",
-            "hidden": True,
-            "environment": {
-                "POCO_GCC82": "/ansysdev/cmake_deps/gcc82/poco-current",
-                "WX3_GCC82_DEBUG": "/ansysdev/cmake_deps/gcc82/wx3-current-debug",
-                "WX3_GCC82_RELEASE": "/ansysdev/cmake_deps/gcc82/wx3-current-release",
-                "POCO_VS2019": "C:/ansysdev/cmake_deps/vs2019/poco-current",
-                "WX3_VS2019": "C:/ansysdev/cmake_deps/vs2019/wx3-current",
-            },
-        }
-    ]
-
     msvc = MSVCToolkit(name="vs2019", ver="2019", tools="v142")
     gcc = GCCToolkit(name="gcc820", ver="8.2.0", fortran=False)
     oneapi = OneAPIToolkit(
@@ -44,7 +31,6 @@ def main(skip_bad: bool = False) -> Tuple[Set[str], Set[str], Set[str]]:
     added, skipped, errors = generate_presets_file(
         output_file,
         toolkits,
-        static_presets=static_presets,
         skip_bad=skip_bad,
     )
     return (added, skipped, errors)
@@ -76,7 +62,7 @@ if __name__ == "__main__":
     if args.loglevel == "quiet":
         loglevel = logging.ERROR
 
-    logging.basicConfig(format="%(levelname)s: %(message)s", level=loglevel)
+    # logging.basicConfig(format="%(levelname)s: %(message)s", level=loglevel)
     main(args.skip)
 
 
@@ -91,3 +77,44 @@ def test_generate_main() -> None:
         assert len(added) == 3
     else:
         raise AssertionError("Unsupported OS")
+
+
+def test_dual_chain() -> None:
+    static_presets = [
+        {
+            "name": "env_base",
+            "hidden": True,
+            "environment": {
+                "COMMON_DEP1": "/users/path/to/dep1",
+                "COMMON_DEP2": "/users/path/to/dep2",
+            },
+        }
+    ]
+
+    output_file = "user_presets.json"
+    toolkits: List[Toolkit] = [
+        ToolkitChain(
+            name="vs2019_oneapi2021_3",
+            toolkits=[
+                MSVCToolkit(ver="2019"),
+                OneAPIToolkit(ver="2021.3.0", fortran="ifort", components=["mkl"]),
+            ],
+        ),
+        ToolkitChain(
+            name="gcc820_oneapi2021_3",
+            toolkits=[
+                GCCToolkit(ver="8.2.0"),
+                OneAPIToolkit(ver="2021.3.0", fortran="ifort", components=["mkl"]),
+            ],
+        ),
+    ]
+    added, skipped, errors = generate_presets_file(
+        output_file, toolkits, static_presets=static_presets, detailed_kit_info=False
+    )
+
+    assert len(errors) == 0
+    assert len(added) + len(skipped) == 2
+    if sys.platform == "win32":
+        assert len(added) == 1
+    elif sys.platform == "linux":
+        assert len(added) == 1
