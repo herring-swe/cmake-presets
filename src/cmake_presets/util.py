@@ -98,21 +98,24 @@ class Version(Sequence[int]):
 
     @classmethod
     def make(
-        cls, val: Union[str, None], minlen: int = 1, maxlen: int = 4, sep: str = "."
+        cls, val: Union[str, "Version", None], minlen: int = 1, maxlen: int = 4, sep: str = "."
     ) -> "Version":
-        """Same as constructor but only accept string or None. None will return None"""
+        """Same as constructor but only accept string, Version or None. None will return None"""
         if not val:
             return Version()
         if minlen <= 1:
             minlen = 1
 
-        parts = []
-        strings: List[str] = val.split(sep)
-        try:
-            for i in range(min(4, len(strings))):
-                parts.append(int(strings[i]))
-        except ValueError as e:
-            raise ValueError(f"Version is not numerical: {val}\n+{str(e)}") from e
+        if isinstance(val, Version):
+            parts = val.parts
+        else:
+            parts = []
+            strings: List[str] = val.split(sep)
+            try:
+                for i in range(min(4, len(strings))):
+                    parts.append(int(strings[i]))
+            except ValueError as e:
+                raise ValueError(f"Version is not numerical: {val}\n+{str(e)}") from e
         if len(parts) > maxlen:
             raise ValueError(f"Version must have at most {maxlen} components: {val})")
         if len(parts) < minlen:
@@ -122,7 +125,7 @@ class Version(Sequence[int]):
 
     @classmethod
     def make_safe(
-        cls, val: Union[str, None], minlen: int = 1, maxlen: int = 4, sep: str = "."
+        cls, val: Union[str, "Version", None], minlen: int = 1, maxlen: int = 4, sep: str = "."
     ) -> "Version":
         """Same as make() but catches exceptions and return empty version"""
         try:
@@ -132,6 +135,8 @@ class Version(Sequence[int]):
         return Version()
 
     def string(self, maxnum: int = 4, sep: str = ".") -> str:
+        if not(self):
+            return "Unspecified"
         maxnum = min(len(self), maxnum)
         return sep.join([str(self.parts[i]) for i in range(maxnum)])
 

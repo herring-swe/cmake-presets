@@ -19,7 +19,7 @@ log = logging.getLogger(__name__)
 OneAPIType = TypeVar("OneAPIType", bound="OneAPI")
 
 
-def oneapi_version(val: str) -> Version:
+def oneapi_version(val: Union[str, Version]) -> Version:
     return Version.make(val, minlen=1, maxlen=3)
 
 
@@ -72,14 +72,14 @@ class OneAPI:
 
         if detailed:
             log.info("   Product: Intel oneAPI %s", self.version.major)
-            log.info("   Version: ", self.version)
+            log.info("   Version: %s", self.version)
             if fortran in ["any", "ifx"]:
                 log.info("       ifx: %s", self.ifx_path())
             if fortran in ["any", "ifort"]:
                 log.info("     ifort: %s", self.ifort_path())
-            log.info("Components:\n")
+            log.info("Components:")
             for name, path in print_comp.items():
-                log.info("  - %s: %s\n", name, path)
+                log.info("  - %s: %s", name, path)
         else:
             compilers = []
             if fortran in ["any", "ifx"]:
@@ -90,6 +90,7 @@ class OneAPI:
             log.info("       Version: %s", self.version)
             log.info("     Compilers: %s", ", ".join(compilers))
             log.info("    Components: %s", ", ".join(print_comp))
+        log.info("")
 
     @classmethod
     def scan(cls, root_dir: str = "") -> List["OneAPI"]:
@@ -167,7 +168,8 @@ class OneAPI:
         for name in OneAPI.COMPONENTS:
             comp_path = os.path.join(rootdir, name, str(ver))
             vars_path = os.path.join(comp_path, compdirs.varspath)
-            if os.path.isdir(vars_path):
+            log.debug("Checking: %s", vars_path)
+            if os.path.isfile(vars_path):
                 found_comps += 1
                 obj.components[name] = vars_path
                 if name == "compiler":
@@ -191,7 +193,7 @@ class OneAPIToolkit(Toolkit):
     def __init__(
         self,
         name: str = "",
-        ver: str = "",
+        ver: Union[str, Version] = "",
         fortran: str = "any",
         components: Union[str, Iterable[str]] = "all",
         root_dir: str = "",

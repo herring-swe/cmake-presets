@@ -16,7 +16,7 @@ GCCType = TypeVar("GCCType", bound="GCC")
 GCCToolkitType = TypeVar("GCCToolkitType", bound="GCCToolkit")
 
 
-def gcc_version(val: str) -> Version:
+def gcc_version(val: Union[str, Version]) -> Version:
     return Version.make(val, minlen=1, maxlen=3)
 
 
@@ -147,6 +147,7 @@ class GCC:
             log.info(" * Product: GNU Compiler Collection %s", self.version.major)
             log.info("       Version: %s", self.version)
             log.info("     Languages: %s", lang)
+        log.info("")
 
     def set_binaries(
         self, gcc: str, gxx: str, gfortran: Union[str, None], test: bool = False
@@ -324,7 +325,7 @@ class GCCToolkit(Toolkit):
     def __init__(
         self,
         name: str = "",
-        ver: str = "",
+        ver: Union[str, Version] = "",
         fortran: bool = False,
         scan_dirs: Union[List[str], None] = None,
         scan_extradirs: Union[List[str], None] = None,

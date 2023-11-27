@@ -1,8 +1,9 @@
 #!/usr/bin/python3
 
 import sys
+from typing import Tuple, Set
 
-from cmake_presets import (
+from cmake_presets import (  # type: ignore
     GCCToolkit,
     MSVCToolkit,
     OneAPIToolkit,
@@ -11,7 +12,7 @@ from cmake_presets import (
 )
 
 
-def main(skip_bad: bool = False) -> int:
+def main(skip_bad: bool = False) -> Tuple[Set[str], Set[str], Set[str]]:
     static_presets = [
         {
             "name": "env_base",
@@ -84,7 +85,7 @@ def test_generate_main() -> None:
 
     assert len(errors) == 0
     assert len(added) + len(skipped) == 5
-    if sys.platform == "nt":
+    if sys.platform == "win32":
         assert len(added) == 2
     elif sys.platform == "linux":
         assert len(added) == 3

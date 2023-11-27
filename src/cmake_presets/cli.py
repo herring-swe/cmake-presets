@@ -7,17 +7,21 @@ from .toolkit import ToolkitError, get_toolkits
 
 
 class CLIFormatter(logging.Formatter):
-    GREY = "\x1b[38;21m"
-    YELLOW = "\x1b[33;21m"
-    RED = "\x1b[31;21m"
-    BOLD_RED = "\x1b[31;1m"
-    RESET = "\x1b[0m"
+    # Windows 10 added ANSI color support so let's assume this is okay.
+    # 256 color should be perfectly fine as well
+    WHITE       = "\x1b[0;37m"
+    YELLOW      = "\x1b[0;33m"
+    RED         = "\x1b[0;31m"
+    BOLD_RED    = "\x1b[1;31m"
+    RESET       = "\x1b[0m"
+    CYAN        = "\x1b[0;36m"
+    SEP         = WHITE + ":" + RESET
 
-    DEBUG = logging.Formatter(f"{GREY}%(levelname)s - %(name)s{RESET}: %(message)s")
+    DEBUG = logging.Formatter(f"{WHITE}%(levelname)s - {CYAN}%(name)s{RESET}{SEP} %(message)s")
     INFO = logging.Formatter("%(message)s")
-    WARNING = logging.Formatter(f"{YELLOW}%(levelname)s{RESET}: %(message)s")
-    ERROR = logging.Formatter(f"{RED}%(levelname)s{RESET}: %(message)s")
-    CRITICAL = logging.Formatter(f"{BOLD_RED}%(levelname)s{RESET}: %(message)s")
+    WARNING = logging.Formatter(f"{YELLOW}%(levelname)s{RESET}{SEP} %(message)s")
+    ERROR = logging.Formatter(f"{RED}%(levelname)s{RESET}{SEP} %(message)s")
+    CRITICAL = logging.Formatter(f"{BOLD_RED}%(levelname)s{RESET}{SEP} %(message)s")
 
     def __init__(self) -> None:
         super().__init__(style="%")
@@ -37,12 +41,12 @@ class CLIFormatter(logging.Formatter):
 
 def setup_cli_logging() -> logging.Logger:
     ch = logging.StreamHandler(sys.stdout)
-    ch.setLevel(logging.DEBUG)
+    #ch.setLevel(logging.DEBUG)
     ch.setFormatter(CLIFormatter())
 
     log = logging.getLogger(__package__)
     log.addHandler(ch)
-    log.setLevel(logging.DEBUG)
+    log.setLevel(logging.INFO)
 
     return log
 
@@ -59,10 +63,13 @@ def main() -> None:
         help="command (default: %(default)s)",
     )
     parser.add_argument(
-        "--skip-bad", action="store_true", help="Report toolkit error but continue"
+        "--skip-bad", action="store_true", help="report toolkit error but continue"
     )
     parser.add_argument(
-        "-v", "--verbose", action="store_true", help="Write verbose messages"
+        "-v", "--verbose", action="store_true", help="show more information"
+    )
+    parser.add_argument(
+        "--debug", action="store_true", help="show debug messages"
     )
 
     for cls in get_toolkits().values():
@@ -76,8 +83,8 @@ def main() -> None:
             # TODO Wrap group in a Callable that interfers and force prefix
             cls._add_arguments(prefix, group)
     args = parser.parse_args()
-
-    # print("command: " + args.command)
+    if args.debug:
+        log.setLevel(logging.DEBUG)
 
     if args.command == "list":
         log.info("Toolkits:")
@@ -98,7 +105,9 @@ def main() -> None:
             try:
                 # TODO extract args only for this toolkit according to prefix
                 toolkit = cls._from_args(prefix, args)
-                if not toolkit.scan(select=select):
+                if toolkit.scan(select=select):
+                    toolkit.print(detailed=args.verbose)
+                else:
                     log.info("No instances found for %s", toolkit.get_toolkit_name())
             except ToolkitError as e:
                 if args.skip_bad:

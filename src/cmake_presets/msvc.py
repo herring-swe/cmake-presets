@@ -15,12 +15,12 @@ MSVCType = TypeVar("MSVCType", bound="MSVC")
 BuildToolType = TypeVar("BuildToolType", bound="BuildTool")
 
 
-def vs_version(val: str) -> Version:
+def vs_version(val: Union[str, Version]) -> Version:
     return Version.make(val, maxlen=1)
 
 
-def build_tools_version(val: str) -> Version:
-    if val is not None and val.startswith("v"):
+def build_tools_version(val: Union[str, Version]) -> Version:
+    if val is not None and isinstance(val, str) and val.startswith("v"):
         # FIXME. This comparison needs to be a range
         if val == "v143":
             return Version(14, 30)
@@ -34,7 +34,7 @@ def build_tools_version(val: str) -> Version:
     return Version.make(val, minlen=2, maxlen=3)
 
 
-def win_sdk_version(val: str) -> Version:
+def win_sdk_version(val: Union[str, Version]) -> Version:
     return Version.make(val, minlen=4)
 
 
@@ -138,17 +138,19 @@ class MSVC:
                     log.info("                 %s", ", ".join(tool.tool_names()))
         else:
             log.info(
-                (" * Product: %s - %s", self.displayName, str(self.displayVersion))
+                " * Product: %s - %s", self.displayName, self.displayVersion
             )
             if list_buildtools:
                 for tool in self.vcBuildTools:
-                    log.info("\n   * Build Tool: %s", tool.version)
+                    log.info("   * Build Tool: %s", tool.version)
+        log.info("")
 
     @classmethod
     def create(cls, json: Dict[str, Any]) -> Union["MSVC", None]:
         obj = MSVC()
         obj.productId = json.get("productId", "")
         if not obj.productId.lower().startswith("microsoft.visualstudio.product."):
+            log.debug("Skipping product: %s", obj.productId)
             return None
         last = obj.productId.split(".", 4)[3].lower()
         if last not in ["community", "professional", "enterprise", "buildtools"]:
@@ -160,10 +162,12 @@ class MSVC:
         if "catalog" in json:
             catalog = json["catalog"]
             if not isinstance(catalog, dict):
-                return None
+                raise ScanError(f"Catalog is not of expected type (type is {type(dict)})")
             obj.productVersion = Version.make(catalog.get("productLineVersion", ""))
             obj.displayVersion = Version.make(catalog.get("productDisplayVersion", ""))
             obj.fullVersion = Version.make(catalog.get("buildVersion", ""))
+        else:
+            log.debug('No "catalog" in json')
         obj.isValid = json.get("isComplete", False)
         obj.validate_info()
         return obj
@@ -187,30 +191,29 @@ class MSVC:
         return self.isValid
 
     @classmethod
-    def scan_products(cls, verbose: bool = False) -> List["MSVC"]:
-        products = cls._scan_vs_installs(verbose)
+    def scan_products(cls) -> List["MSVC"]:
+        products = cls._scan_vs_installs()
         for product in products:
             cls._scan_build_tools(product)
         return products
 
     @classmethod
-    def _scan_vs_installs(cls, verbose: bool = False) -> List["MSVC"]:
+    def _scan_vs_installs(cls) -> List["MSVC"]:
         vswhere = os.path.expandvars(
             r"%ProgramFiles(x86)%\Microsoft Visual Studio\Installer\vswhere.exe"
         )
         if not os.path.isfile(vswhere):
-            if verbose:
-                raise ScanError("INFO: Could not find vswhere utility: " + vswhere)
+            log.debug("Could not find vswhere utility: %s", vswhere)
             return []
         cmd = [vswhere, "-products", "*", "-all", "-format", "json"]
         log.debug("Running %s", " ".join(cmd))
         try:
-            out = check_output(cmd)  # noqa: S603
+            out = check_output(cmd)
         except CalledProcessError as e:
-            raise ScanError("ERROR: Could not execute vswhere") from e
+            raise ScanError("Could not execute vswhere") from e
         data = json.loads(out)
         if not data:
-            raise ScanError("INFO: No data returned from vswhere")
+            log.debug("No data returned from vswhere")
 
         installs = []
         for d in data:
@@ -237,13 +240,13 @@ class MSVCToolkit(Toolkit):
     def __init__(
         self,
         name: str = "",
-        ver: str = "",
-        tools: str = "",
-        winsdk: str = "",
+        ver: Union[str, Version] = "",
+        tools: Union[str, Version] = "",
+        winsdk: Union[str, Version] = "",
     ) -> None:
-        self.vs_version: Version = vs_version(ver)
-        self.tools_version: Version = build_tools_version(tools)
-        self.winsdk_version: Version = win_sdk_version(winsdk)
+        self.vs_version = vs_version(ver)
+        self.tools_version = build_tools_version(tools)
+        self.winsdk_version = win_sdk_version(winsdk)
 
         self._found: List[MSVC] = []
 
@@ -310,16 +313,15 @@ class MSVCToolkit(Toolkit):
     @override
     def scan(self, select: bool = False, verbose: bool = False) -> bool:
         try:
-            verbose = log.isEnabledFor(logging.DEBUG)
-            products = self._filter(MSVC.scan_products(verbose))
+            products = self._filter(MSVC.scan_products())
             if select:
                 best = self._select(products)
                 products = [best] if best else []
         except ScanError as e:
             log.exception(e)
             return False
-        self._scanned = products
-        return bool(self._scanned)
+        self._found = products
+        return bool(self._found)
 
     def _filter(self, products: List[MSVC]) -> List[MSVC]:
         if not self.vs_version and not self.tools_version and not self.winsdk_version:

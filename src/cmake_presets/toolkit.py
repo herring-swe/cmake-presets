@@ -118,7 +118,6 @@ class Toolkit(metaclass=ABCMeta):  # FIXME: Rename to Generator
         self._chain: Union[ToolkitChain, None] = None
         self._chain_idx: int = -1
         self._env_result: EnvDict = EnvDict()
-        self._logger: logging.Logger = log
 
     def __init_subclass__(cls, *args: Any, **kwargs: Any) -> None:
         super().__init_subclass__(*args, **kwargs)
@@ -130,6 +129,7 @@ class Toolkit(metaclass=ABCMeta):  # FIXME: Rename to Generator
 
     @final
     def copy(self) -> Any:
+        log.debug("Copy of %s", self.get_toolkit_name())
         return deepcopy(self)
 
     @staticmethod
@@ -600,6 +600,11 @@ class ToolkitChain(Toolkit):
             if not toolkit.scan(select=select):
                 return False
         return True
+
+    @override
+    def print(self, detailed: bool=False) -> None:
+        for toolkit in self._toolkits:
+            toolkit.print(detailed=detailed)
 
     @override
     def get_base_json(self) -> dict:

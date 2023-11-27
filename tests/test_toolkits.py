@@ -18,7 +18,7 @@ def toolkit_names() -> Set[str]:
 
 
 def test_toolkits_register(toolkit_names: Set[str]) -> None:
-    import cmake_presets as cmp
+    import cmake_presets as cmp   # type: ignore
 
     toolkits = cmp.get_toolkits()
     for t in toolkits.keys():
