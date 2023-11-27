@@ -4,8 +4,8 @@ import platform
 import logging
 from subprocess import check_output, CalledProcessError
 from functools import total_ordering
-from typing import Set, List, Dict, Any, Union, TypeVar, Sequence
-from argparse import _ArgumentGroup
+from typing import Set, List, Dict, Any, Union, TypeVar
+from argparse import _ArgumentGroup, Namespace
 from .toolkit import Toolkit
 from .util import Version, ScanError
 from .util import override  # Compatibility imports
@@ -15,10 +15,8 @@ MSVCType = TypeVar("MSVCType", bound="MSVC")
 BuildToolType = TypeVar("BuildToolType", bound="BuildTool")
 
 
-def vs_version(val: str) -> Version:  # Single digit version
-    if val is None:
-        return None
-    return Version(int(val))
+def vs_version(val: str) -> Version:
+    return Version.make(val, maxlen=1)
 
 
 def build_tools_version(val: str) -> Version:
@@ -70,14 +68,18 @@ class BuildTool:
                 ret.append(target if host == target else f"{host}_{target}")
         return ret
 
-    def __lt__(self, other: BuildToolType) -> bool:
+    def __lt__(self, other: Any) -> bool:
+        if not isinstance(other, BuildTool):
+            return False
         return self.version < other.version
 
-    def __eq__(self, other: BuildToolType) -> bool:
+    def __eq__(self, other: Any) -> bool:
+        if not isinstance(other, BuildTool):
+            return False
         return self.version == other.version
 
 
-"""
+r"""
 Class to find installed:
 * Visual Studio or Build Tools, using vswhere?
     - vswhere:
@@ -110,13 +112,13 @@ class MSVC:
         self.productId: str = ""  # Microsoft.VisualStudio.Product.Professional
         self.installDir: str = ""  # ...\\Microsoft Visual Studio\\2019\\Professional
         self.displayName: str = ""  # Visual Studio Professional 2019
-        self.productVersion: int = -1  # 2019
-        self.displayVersion: Version = Version(1)  # 16.11.29
-        self.fullVersion: Version = Version(1)  # 16.11.33927.289
+        self.productVersion: Version = Version()  # 2019
+        self.displayVersion: Version = Version()  # 16.11.29
+        self.fullVersion: Version = Version()  # 16.11.33927.289
         self.vcBuildTools: List[BuildTool] = []  # List of BuildTools like '14.20.27508'
         self.isValid: bool = False  # true if proper info, "isComplete" and supported
 
-    def print(self, detailed: bool=False, list_buildtools: bool=True) -> None:
+    def print(self, detailed: bool = False, list_buildtools: bool = True) -> None:
         if not log.isEnabledFor(logging.INFO):
             return
 
@@ -143,7 +145,7 @@ class MSVC:
                     log.info("\n   * Build Tool: %s", tool.version)
 
     @classmethod
-    def create(cls, json: Dict[str, Any]) -> Union[MSVCType, None]:
+    def create(cls, json: Dict[str, Any]) -> Union["MSVC", None]:
         obj = MSVC()
         obj.productId = json.get("productId", "")
         if not obj.productId.lower().startswith("microsoft.visualstudio.product."):
@@ -185,14 +187,14 @@ class MSVC:
         return self.isValid
 
     @classmethod
-    def scan_products(cls, verbose: bool=False) -> List[MSVCType]:
+    def scan_products(cls, verbose: bool = False) -> List["MSVC"]:
         products = cls._scan_vs_installs(verbose)
         for product in products:
             cls._scan_build_tools(product)
         return products
 
     @classmethod
-    def _scan_vs_installs(cls, verbose: bool=False) -> List[MSVCType]:
+    def _scan_vs_installs(cls, verbose: bool = False) -> List["MSVC"]:
         vswhere = os.path.expandvars(
             r"%ProgramFiles(x86)%\Microsoft Visual Studio\Installer\vswhere.exe"
         )
@@ -201,7 +203,7 @@ class MSVC:
                 raise ScanError("INFO: Could not find vswhere utility: " + vswhere)
             return []
         cmd = [vswhere, "-products", "*", "-all", "-format", "json"]
-        log.debug("Running %s" , " ".join(cmd))
+        log.debug("Running %s", " ".join(cmd))
         try:
             out = check_output(cmd)  # noqa: S603
         except CalledProcessError as e:
@@ -218,7 +220,7 @@ class MSVC:
         return installs
 
     @classmethod
-    def _scan_build_tools(cls, msvc: MSVCType) -> None:
+    def _scan_build_tools(cls, msvc: "MSVC") -> None:
         kitdir = os.path.join(msvc.installDir, "VC", "Tools", "MSVC")
         for file in os.listdir(kitdir):
             fn = os.path.join(kitdir, file)
@@ -276,7 +278,7 @@ class MSVCToolkit(Toolkit):
     def _add_arguments(prefix: str, parser: _ArgumentGroup) -> None:
         parser.add_argument(
             f"--{prefix}ver",
-            choices=["2017", "2019", "2022"],
+            choices=[Version(2017), Version(2019), Version(2022)],
             default=None,
             metavar="VER",
             type=vs_version,
@@ -299,33 +301,27 @@ class MSVCToolkit(Toolkit):
 
     @override
     @classmethod
-    def _from_args(cls, prefix: str, args: Sequence[str]) -> MSVCType:
+    def _from_args(cls, prefix: str, args: Namespace) -> "MSVCToolkit":
         ver = getattr(args, prefix + "ver")
         tools = getattr(args, prefix + "tools")
         winsdk = getattr(args, prefix + "winsdk")
         return cls(ver=ver, tools=tools, winsdk=winsdk)
 
     @override
-    def scan(self, select: bool=False, verbose: bool=False) -> bool:
+    def scan(self, select: bool = False, verbose: bool = False) -> bool:
         try:
             verbose = log.isEnabledFor(logging.DEBUG)
-            products = self.filter(MSVC.scan_products(verbose))
+            products = self._filter(MSVC.scan_products(verbose))
             if select:
-                best = self.Select(products)
-                products = []
-                if best:
-                    products.append(best)
-            for product in products:
-                s = product.print(detailed=verbose, list_buildtools=True)
-                if s:
-                    print(s)
+                best = self._select(products)
+                products = [best] if best else []
         except ScanError as e:
-            log.exception(str(e), e)
+            log.exception(e)
             return False
         self._scanned = products
         return bool(self._scanned)
 
-    def filter(self, products: List[MSVC]) -> List[MSVC]:
+    def _filter(self, products: List[MSVC]) -> List[MSVC]:
         if not self.vs_version and not self.tools_version and not self.winsdk_version:
             return products
 
@@ -337,7 +333,7 @@ class MSVCToolkit(Toolkit):
                 continue
 
             if self.tools_version:
-                left_tools = []
+                left_tools: List[BuildTool] = []
                 for tools in product.vcBuildTools:
                     if len(self.tools_version) >= 3:
                         if tools.version == self.tools_version:
@@ -351,16 +347,18 @@ class MSVCToolkit(Toolkit):
             left.append(product)
         return left
 
-    def select(self, products: List[MSVC]) -> List[MSVC]:
+    def _select(self, products: List[MSVC]) -> Union[MSVC, None]:
         # Already filtered and sorted
         if products:
             return products[0]
         return None
-    
-    @override
-    def print() -> str:
-        pass
 
+    @override
+    def print(self, detailed: bool = False) -> None:
+        for product in self._found:
+            product.print(detailed)
+
+    @override
     def get_base_json(self) -> dict:
         json = super().get_base_json()
         # TODO Not seen as needed. Find out more

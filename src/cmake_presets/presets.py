@@ -1,7 +1,7 @@
-import os
-import logging
 import json
-from typing import Dict, Any, List, Set, Tuple
+import logging
+import os
+from typing import Any, Dict, List, Set, Tuple, Union
 
 # Trick to get all internal classes to load
 __all__ = [
@@ -14,10 +14,10 @@ __all__ = [
     "generate_presets_file",
 ]
 
-from .msvc import MSVCToolkit
 from .gcc import GCCToolkit
+from .msvc import MSVCToolkit
 from .oneapi import OneAPIToolkit
-from .toolkit import Toolkit, ToolkitError, BatScriptToolkit, ShellScriptToolkit
+from .toolkit import BatScriptToolkit, ShellScriptToolkit, Toolkit, ToolkitError
 from .util import merge_presets
 
 log = logging.getLogger(__name__)
@@ -42,9 +42,10 @@ def add_preset(
 def generate_presets_file(
     filename: str,
     toolkits: List[Toolkit],
-    base_data: Dict[str, Any] = None,
-    static_presets: List[Dict[str, Any]] = None,
+    base_data: Union[Dict[str, Any], None] = None,
+    static_presets: Union[List[Dict[str, Any]], None] = None,
     ignore_read_error: bool = False,
+    detailed_kit_info: bool = False,
     skip_bad: bool = False,
 ) -> Tuple[Set[str], Set[str], Set[str]]:
     if not base_data:
@@ -81,6 +82,8 @@ def generate_presets_file(
             try:
                 if not kit.scan(select=True):
                     raise ToolkitError("No matches found")
+                log.info("Generating preset %s from selected kit:", kit.name)
+                kit.print(detailed=detailed_kit_info)
                 add_preset(data, kit.get_json(), replace=True)
                 pr_added.add(kit.name)
             except ToolkitError as e:

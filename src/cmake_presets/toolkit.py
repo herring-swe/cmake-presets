@@ -7,7 +7,7 @@ import stat
 import subprocess
 import sys
 from abc import ABCMeta, abstractmethod
-from argparse import ArgumentParser
+from argparse import _ArgumentGroup, Namespace
 from copy import deepcopy
 from tempfile import TemporaryDirectory
 from typing import Any, Dict, List, NamedTuple, Set, Tuple, TypeVar, Union
@@ -25,11 +25,13 @@ ToolkitType = TypeVar("ToolkitType", bound="Toolkit")
 ToolkitChainType = TypeVar("ToolkitChainType", bound="ToolkitChain")
 ToolkitInstanceType = TypeVar("ToolkitInstanceType", bound="ToolkitInstance")
 
-_TOOLKITS: Dict[str, ToolkitType] = {}
-_DEBUG = True
+_TOOLKITS: Dict[str, "Toolkit"] = {}
+_DEBUG = False
 
 if _DEBUG:
-    logging.basicConfig(format="%(levelname)s: %(message)s", level=logging.DEBUG)
+    #logging.basicConfig(format="%(levelname)s: %(message)s", level=logging.DEBUG)
+    logging.basicConfig(level=logging.DEBUG)
+
     log.warning("DEBUG root log handler is enabled")
 
     def _is_abstract(method: ...) -> bool:
@@ -55,7 +57,7 @@ def _register_toolkit(cls: Any) -> None:
             log.debug("    %s", member)
 
 
-def get_toolkits() -> Dict[str, ToolkitType]:
+def get_toolkits() -> Dict[str, "Toolkit"]:
     return _TOOLKITS
 
 
@@ -76,18 +78,18 @@ class ToolkitInstance(NamedTuple):  # FIXME: Rename to Toolkit
     def print(self, detailed: bool = False) -> None:
         raise NotImplementedError
 
-    def __lt__(self, other: ToolkitInstanceType) -> bool:
-        raise NotImplementedError
+    # def __lt__(self, other: "ToolkitInstance") -> bool:
+    #     raise NotImplementedError
 
-    def __eq__(self, other: ToolkitInstanceType) -> bool:
-        raise NotImplementedError
+    # def __eq__(self, other: "ToolkitInstance") -> bool:
+    #     raise NotImplementedError
 
 
 class ToolkitScanner(metaclass=SingletonABCMeta):
     """Abstract singleton base class for searching and holding ToolkitInstance"""
 
     @abstractmethod
-    def scan() -> int:
+    def scan(self) -> int:
         """Scan should not filter based on any properties. Filtering is done in
         the toolkit
         """
@@ -95,19 +97,19 @@ class ToolkitScanner(metaclass=SingletonABCMeta):
 
     @abstractmethod
     def matches(
-        self, spec: ToolkitType, print: bool = False, print_detailed: bool = False
+        self, spec: "Toolkit", print: bool = False, print_detailed: bool = False
     ) -> List[ToolkitInstance]:
         """Return"""
         raise NotImplementedError
 
-    def get_best(self, spec: ToolkitType, print: bool = False) -> ToolkitInstance:
+    def get_best(self, spec: "Toolkit", print: bool = False) -> ToolkitInstance:
         raise NotImplementedError
 
 
 class Toolkit(metaclass=ABCMeta):  # FIXME: Rename to Generator
     """Toolkit: Abstract base class"""
 
-    def __init__(self, name: str, required_vars: Set[str] = None) -> None:
+    def __init__(self, name: str, required_vars: Union[Set[str], None] = None) -> None:
         self.name: str = "toolkit_" + name  # name
         self.required_vars: Set[str] = (
             required_vars if required_vars is not None else set()
@@ -161,15 +163,14 @@ class Toolkit(metaclass=ABCMeta):  # FIXME: Rename to Generator
         return ""
 
     @staticmethod
-    def _add_arguments(prefix: str, parser: ArgumentParser) -> None:
+    def _add_arguments(prefix: str, parser: _ArgumentGroup) -> None:
         """Add Toolkit specific arguments to parser (check if already defined)"""
         return
 
     @classmethod
-    @abstractmethod
-    def _from_args(cls, prefix: str, args: Dict[str, Any]) -> ToolkitType:
+    def _from_args(cls, prefix: str, args: Namespace) -> "Toolkit":
         """Parse arguments from argument-parser and construct Toolkit for generation
-        Called regardless of WithArguments when from command-line
+        Only called from CLI if _get_argument_prefix return Non-empty string
         """
         raise NotImplementedError
 
@@ -188,11 +189,7 @@ class Toolkit(metaclass=ABCMeta):  # FIXME: Rename to Generator
         raise NotImplementedError
 
     @abstractmethod
-    def select(self) -> bool:
-        raise NotImplementedError
-
-    @abstractmethod
-    def print(self, detailed: bool = False) -> bool:
+    def print(self, detailed: bool = False) -> None:
         raise NotImplementedError
 
     ############################################################
@@ -300,7 +297,7 @@ class Toolkit(metaclass=ABCMeta):  # FIXME: Rename to Generator
         return
 
     @final
-    def _execute_env_script(self, script: bool, runenv: bool) -> EnvDict:
+    def _execute_env_script(self, script: str, runenv: EnvDict) -> EnvDict:
         """Execute environment script and return the environment difference in environment
         run before and after the script
         """
@@ -371,7 +368,9 @@ class Toolkit(metaclass=ABCMeta):  # FIXME: Rename to Generator
     # Preset CMake cache variables
     ############################################################
 
-    def _resolve_exe(self, name: str, desc: str, env: EnvDict, val: str = "") -> str:
+    def _resolve_exe(
+        self, name: str, desc: str, env: EnvDict, val: Union[str, None] = None
+    ) -> Union[str, None]:
         if not val:
             val = env.get(name, "")
         if val:
@@ -380,8 +379,6 @@ class Toolkit(metaclass=ABCMeta):  # FIXME: Rename to Generator
             elif "PATH" in env:
                 # logging.debug("Resolving %s %s in PATH: %s", desc, val, env["PATH"])
                 val = shutil.which(val, path=env["PATH"])
-                if val is None:
-                    val = ""
         if not val:
             if name in self.required_vars:
                 raise ToolkitError(f"Could not resolve {desc}")
@@ -411,7 +408,7 @@ class Toolkit(metaclass=ABCMeta):  # FIXME: Rename to Generator
     ############################################################
 
     @final
-    def _register_chain(self, chain: ToolkitChainType, idx: int) -> None:
+    def _register_chain(self, chain: "ToolkitChain", idx: int) -> None:
         self._chain = chain
         self._chain_idx = idx
 
@@ -420,13 +417,13 @@ class Toolkit(metaclass=ABCMeta):  # FIXME: Rename to Generator
         return bool(self._chain)
 
     @final
-    def get_prev_toolkit(self) -> Union[ToolkitType, None]:
+    def get_prev_toolkit(self) -> Union["Toolkit", None]:
         if self._chain:
             return self._chain._get_prev_toolkit(self._chain_idx)
         return None
 
     @final
-    def get_next_toolkit(self) -> Union[ToolkitType, None]:
+    def get_next_toolkit(self) -> Union["Toolkit", None]:
         if self._chain:
             return self._chain._get_next_toolkit(self._chain_idx)
         return None
@@ -459,10 +456,6 @@ class ScriptToolkit(Toolkit):
         super().__init__(name, required_vars)
 
     @override
-    def is_utility_class() -> bool:
-        return True
-
-    @override
     def scan(self, select: bool = False) -> bool:
         """In this case we only need to verify script existence"""
         if os.path.isfile(self.script):
@@ -471,6 +464,10 @@ class ScriptToolkit(Toolkit):
         else:
             logging.error("Script does not exist: %s", self.script)
         return False
+
+    @override
+    def print(self, detailed: bool = False) -> None:
+        log.info("%s: %s", self.get_toolkit_name(), self.script)
 
     @override
     def _get_env_script(self) -> str:
@@ -498,10 +495,12 @@ class BatScriptToolkit(ScriptToolkit):
         super().__init__(name, desc, script_path, need_cc, need_cxx, need_fortran)
 
     @override
+    @staticmethod
     def get_toolkit_name() -> str:
         return "Bat-file"
 
     @override
+    @staticmethod
     def is_supported() -> bool:
         return platform.system() == "Windows"
 
@@ -519,10 +518,12 @@ class ShellScriptToolkit(ScriptToolkit):
         super().__init__(name, desc, script_path, need_cc, need_cxx, need_fortran)
 
     @override
+    @staticmethod
     def get_toolkit_name() -> str:
         return "Shell script"
 
     @override
+    @staticmethod
     def is_supported() -> bool:
         return platform.system() != "Windows"
 
@@ -559,10 +560,12 @@ class ToolkitChain(Toolkit):
         return None
 
     @override
+    @staticmethod
     def get_toolkit_name() -> str:
         return "Toolkit chain"
 
     @override
+    @staticmethod
     def is_supported() -> bool:
         return True  # Platform agnostic - Cannot determine without object
 

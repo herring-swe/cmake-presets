@@ -4,8 +4,8 @@ import re
 import subprocess
 import logging
 from functools import total_ordering
-from typing import List, Set, Dict, Union, TypeVar, Sequence
-from argparse import _ArgumentGroup
+from typing import Any, List, Set, Dict, Union, TypeVar
+from argparse import _ArgumentGroup, Namespace
 
 from .toolkit import Toolkit
 from .util import Version, EnvDict, ScanError, expand_dirs
@@ -16,7 +16,7 @@ GCCType = TypeVar("GCCType", bound="GCC")
 GCCToolkitType = TypeVar("GCCToolkitType", bound="GCCToolkit")
 
 
-def gcc_version(val: str) -> Union[Version, None]:
+def gcc_version(val: str) -> Version:
     return Version.make(val, minlen=1, maxlen=3)
 
 
@@ -90,7 +90,7 @@ class GCC:
         self.gxx: str = ""
         self.gfortran: str = ""
         self.machine: str = ""
-        self.version: Version = Version(None)
+        self.version: Version = Version()
 
     def gcc_path(self) -> str:
         if self.gcc:
@@ -107,7 +107,9 @@ class GCC:
             return os.path.join(self.dir, self.gfortran)
         return ""
 
-    def __lt__(self, other: GCCType) -> bool:
+    def __lt__(self, other: Any) -> bool:
+        if not isinstance(other, GCC):
+            return False
         if self.version != other.version:
             return self.version < other.version
         if self.machine != other.machine:
@@ -118,14 +120,16 @@ class GCC:
             return False
         return False  # Equal
 
-    def __eq__(self, other: GCCType) -> bool:
+    def __eq__(self, other: Any) -> bool:
+        if not isinstance(other, GCC):
+            return False
         return (
             self.version == other.version
             and self.machine == other.machine
             and bool(self.gfortran) == bool(other.gfortran)
         )
 
-    def string(self, detailed: bool = False, fortran: bool = True) -> None:
+    def print(self, detailed: bool = False, fortran: bool = True) -> None:
         if not log.isEnabledFor(logging.INFO):
             return
         if detailed:
@@ -160,7 +164,7 @@ class GCC:
         self.gfortran = gfortran if gfortran else ""
         return True
 
-    def test_bin(self, name: str) -> bool:
+    def test_bin(self, name: Union[str, None]) -> bool:
         # Any binary (since tested 4.8.5) outputs:
         # XXX -dumpversion      -> major version or full version
         # XXX -dumpfullversion  -> full version, if flag is supported
@@ -232,7 +236,7 @@ class GCC:
         except ValueError:
             return False
 
-    def is_meta_equal(self, other: GCCType) -> bool:
+    def is_meta_equal(self, other: "GCC") -> bool:
         return (
             self.dir == other.dir
             and self.version == other.version
@@ -254,8 +258,10 @@ class GCC:
 
     @classmethod
     def scan(
-        cls, dirs: List[str] = None, extra_dirs: List[str] = None
-    ) -> List[GCCType]:
+        cls,
+        dirs: Union[List[str], None] = None,
+        extra_dirs: Union[List[str], None] = None,
+    ) -> List["GCC"]:
         if not dirs:
             dirs = [
                 "/bin",
@@ -280,7 +286,7 @@ class GCC:
             if os.path.isdir(dir):
                 _scandir(dir, dest=found)
 
-        products = []
+        products: List[GCC] = []
         for dir in found:
             for vals in found[dir].values():
                 # Keep only those where gcc and g++ is paired
@@ -319,14 +325,14 @@ class GCCToolkit(Toolkit):
         self,
         name: str = "",
         ver: str = "",
-        fortran: bool=False,
-        scan_dirs: List[str] = None,
-        scan_extradirs: List[str] = None,
+        fortran: bool = False,
+        scan_dirs: Union[List[str], None] = None,
+        scan_extradirs: Union[List[str], None] = None,
     ) -> None:
         self.version: Version = gcc_version(ver)
         self.with_fortran: bool = fortran
-        self.scan_dirs: List[str] = scan_dirs
-        self.scan_extradirs: List[str] = scan_extradirs
+        self.scan_dirs: List[str] = scan_dirs if scan_dirs else []
+        self.scan_extradirs: List[str] = scan_extradirs if scan_extradirs else []
 
         self._found: List[GCC] = []
 
@@ -393,7 +399,7 @@ class GCCToolkit(Toolkit):
 
     @override
     @classmethod
-    def _from_args(cls, prefix: str, args: Sequence[str]) -> GCCToolkitType:
+    def _from_args(cls, prefix: str, args: Namespace) -> "GCCToolkit":
         ver = getattr(args, prefix + "ver")
         fortran = getattr(args, prefix + "fortran")
         dirs = getattr(args, prefix + "dir")
@@ -401,28 +407,26 @@ class GCCToolkit(Toolkit):
         return cls(ver=ver, fortran=fortran, scan_dirs=dirs, scan_extradirs=extra_dirs)
 
     @override
-    def scan(self, select: bool=False, verbose: bool=False) -> bool:
+    def scan(self, select: bool = False) -> bool:
         try:
-            products: List[GCC] = self.filter(
+            products: List[GCC] = self._filter(
                 GCC.scan(dirs=self.scan_dirs, extra_dirs=self.scan_extradirs)
             )
             if select:
-                best = self.select(products)
-                products = []
-                if best:
-                    products.append(best)
-            for product in products:
-                s = product.string(fortran=self.with_fortran)
-                if s:
-                    print(s)
+                best = self._select(products)
+                products = [best] if best else []
         except ScanError as e:
-            if verbose:
-                print(str(e))
+            log.exception(e)
             return False
         self._found = products
         return bool(products)
 
-    def filter(self, products: List[GCC]) -> List[GCC]:
+    @override
+    def print(self, detailed: bool = False) -> None:
+        for product in self._found:
+            product.print(detailed, fortran=self.with_fortran)
+
+    def _filter(self, products: List[GCC]) -> List[GCC]:
         if not self.version or self.with_fortran:
             return products
 
@@ -435,7 +439,7 @@ class GCCToolkit(Toolkit):
             left.append(product)
         return left
 
-    def select(self, products: List[GCC]) -> Union[GCC, None]:
+    def _select(self, products: List[GCC]) -> Union[GCC, None]:
         # Already filtered and sorted
         if products:
             return products[0]

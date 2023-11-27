@@ -48,10 +48,10 @@ class VersionMismatchError(Exception):
 class SingletonABCMeta(ABCMeta):
     """Abstract singleton meta class"""
 
-    _instances = {}
+    _instances: Dict[Any, Any] = {}
 
     @classmethod
-    def __call__(cls, *args: Any, **kwargs: Any) -> SingletonABCMetaType:
+    def __call__(cls, *args: Any, **kwargs: Any) -> "SingletonABCMeta":
         if cls not in cls._instances:
             cls._instances[cls] = super().__call__(cls, *args, **kwargs)
         return cls._instances[cls]
@@ -68,64 +68,70 @@ class Version(Sequence[int]):
 
     def __init__(
         self,
-        val: Union[int, VersionType, str, List[Any]],
+        val: Any = None,
         minor: int = -1,
         patch: int = -1,
         revision: int = -1,
-        minlen: int = 1,
-        maxlen: int = 4,
-        sep: str = ".",
     ) -> None:
-        if minlen <= 1:
-            minlen = 1
+        self.parts = []
+        if val is None:
+            return
 
         if isinstance(val, Version):
             self.parts = val.parts
-        else:
-            self.parts = []
-
-        if isinstance(val, int):
+        elif isinstance(val, int):
             major: int = val
             for v in [major, minor, patch, revision]:
-                if v >= 0:
-                    self.parts.append(v)
+                if v < 0:
+                    break
+                self.parts.append(v)
         elif isinstance(val, str):
-            strings: List[str] = val.split(sep)
-            try:
-                for i in range(min(4, len(strings))):
-                    self.parts.append(int(strings[i]))
-            except ValueError as e:
-                raise ValueError(f"Version is not numerical: {val}\n+{str(e)}") from e
+            raise ValueError(f"Initialization from string needs to go through Version.make: {val}")
         elif isinstance(val, list):
             for i in range(min(4, len(val))):
-                self.parts.append(int(val[i]))
-
-        if len(self.parts) > maxlen:
-            raise ValueError(f"Version must have at most {maxlen} components: {val})")
-        if len(self.parts) < minlen:
-            raise ValueError(f"Version needs have at least {minlen} components: {val}")
+                ival = int(val[i])
+                if ival < 0:
+                    break
+                self.parts.append(ival)
+        else:
+            raise ValueError(f"Initialization from unsupported type: {type(val)}")
 
     @classmethod
     def make(
         cls, val: Union[str, None], minlen: int = 1, maxlen: int = 4, sep: str = "."
-    ) -> VersionType:
+    ) -> "Version":
         """Same as constructor but only accept string or None. None will return None"""
         if not val:
-            return None
-        return cls(val, minlen=minlen, maxlen=maxlen, sep=sep)
+            return Version()
+        if minlen <= 1:
+            minlen = 1
+
+        parts = []
+        strings: List[str] = val.split(sep)
+        try:
+            for i in range(min(4, len(strings))):
+                parts.append(int(strings[i]))
+        except ValueError as e:
+            raise ValueError(f"Version is not numerical: {val}\n+{str(e)}") from e
+        if len(parts) > maxlen:
+            raise ValueError(f"Version must have at most {maxlen} components: {val})")
+        if len(parts) < minlen:
+            raise ValueError(f"Version needs have at least {minlen} components: {val}")
+
+        return cls(*parts)
 
     @classmethod
     def make_safe(
         cls, val: Union[str, None], minlen: int = 1, maxlen: int = 4, sep: str = "."
-    ) -> VersionType:
-        """Same as make() but None is returned on any exception"""
+    ) -> "Version":
+        """Same as make() but catches exceptions and return empty version"""
         try:
             return cls.make(val, minlen=minlen, maxlen=maxlen, sep=sep)
         except Exception:  # noqa: S110
             pass
-        return None
+        return Version()
 
-    def string(self, maxnum: int = 4, sep: str=".") -> str:
+    def string(self, maxnum: int = 4, sep: str = ".") -> str:
         maxnum = min(len(self), maxnum)
         return sep.join([str(self.parts[i]) for i in range(maxnum)])
 
@@ -139,20 +145,27 @@ class Version(Sequence[int]):
         return self.string(max, sep="")
 
     @property
-    def major(self) -> int:
+    def major(self) -> Union[int, None]:
         return self[0] if len(self) > 0 else None
 
     @property
-    def minor(self) -> int:
+    def minor(self) -> Union[int, None]:
         return self[1] if len(self) > 1 else None
 
     @property
-    def patch(self) -> int:
+    def patch(self) -> Union[int, None]:
         return self[2] if len(self) > 2 else None
 
     @property
-    def revision(self) -> int:
+    def revision(self) -> Union[int, None]:
         return self[3] if len(self) > 3 else None
+
+    def __bool__(self) -> bool:
+        # Any number non-zero. we don't allow negative values
+        for part in self.parts:
+            if part > 0:
+                return True
+        return False
 
     def __hash__(self) -> int:
         return hash(self.parts)
@@ -160,7 +173,9 @@ class Version(Sequence[int]):
     def __len__(self) -> int:
         return len(self.parts)
 
-    def __getitem__(self, i: int) -> int:
+    def __getitem__(self, i: Any) -> Any:
+        if not isinstance(i, (int, slice)):
+            raise ValueError
         return self.parts[i]
 
     def __str__(self) -> str:
@@ -169,9 +184,9 @@ class Version(Sequence[int]):
     def __repr__(self) -> str:
         return f"Version ({str(self.parts)})"
 
-    def __lt__(self, other: Union[int, VersionType, str, List[Any]]) -> bool:
+    def __lt__(self, other: Any) -> bool:
         slen = len(self)
-        if isinstance(other, (int, str, list)):
+        if not isinstance(other, Version):
             try:
                 other = Version(other)
                 if not other:
@@ -191,17 +206,17 @@ class Version(Sequence[int]):
             return True  # Equal
         return slen < olen  # Shorter is less than
 
-    def __eq__(self, other: Union[VersionType, int, str, List[Any]]) -> bool:
+    def __eq__(self, other: Any) -> bool:
         return self.parts_equal(other, True)
 
     def parts_equal(
-        self, other: Union[VersionType, int, str, List[Any]], full: bool = False
+        self, other: Union["Version", int, str, List[str]], full: bool = False
     ) -> bool:
         """
         Matches either fully or as long as this version is defined
         WARNING: Equality is asymmetric if not full
         """
-        if isinstance(other, (int, str, list)):
+        if not isinstance(other, Version):
             try:
                 other = Version(other)
                 if not other:
@@ -224,7 +239,7 @@ class EnvDict(StrUserDict):
         return super().__setitem__(key, item)
 
     @classmethod
-    def os(cls) -> EnvDictType:
+    def os(cls) -> "EnvDict":
         return cls(os.environ)
 
     @staticmethod
@@ -243,8 +258,11 @@ class EnvDict(StrUserDict):
         return os.pathsep.join(diffpaths).strip(os.pathsep)
 
     def diff(
-        self, other: EnvDictType, ignore: Set[str] = None, pathvars: Set[str] = None
-    ) -> EnvDictType:
+        self,
+        other: "EnvDict",
+        ignore: Union[Set[str], None] = None,
+        pathvars: Union[Set[str], None] = None,
+    ) -> "EnvDict":
         """Diff this (baseline) environment to the other enviroment
         Returns a new EnvDict containing the differences
         """
@@ -286,7 +304,9 @@ class EnvDict(StrUserDict):
                 )
         return result
 
-    def merge(self, other: EnvDictType, pathvars: Set[str] = None) -> None:
+    def merge(self, other: EnvDictType, pathvars: Union[Set[str], None] = None) -> None:
+        if not pathvars:
+            pathvars = set()
         pathvars.add("PATH")
         for name, val in other.items():
             if name not in self:

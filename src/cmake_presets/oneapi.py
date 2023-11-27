@@ -1,15 +1,19 @@
-import os
-import sys
-import platform
 import logging
+import os
+import platform
+import sys
+from argparse import _ArgumentGroup, Namespace
 from functools import total_ordering
-from typing import Dict, List, Set, Union, TypeVar, Sequence, Iterable, NamedTuple
-from argparse import _ArgumentGroup
+from typing import Any, Dict, Iterable, List, NamedTuple, Set, TypeVar, Union
 
-from .toolkit import Toolkit
 from .msvc import MSVCToolkit
-from .util import Version, ScanError, expand_dirs
-from .util import override  # Compatibility imports
+from .toolkit import Toolkit
+from .util import (
+    ScanError,
+    Version,
+    expand_dirs,
+    override,  # Compatibility imports
+)
 
 log = logging.getLogger(__name__)
 OneAPIType = TypeVar("OneAPIType", bound="OneAPI")
@@ -20,8 +24,6 @@ def oneapi_version(val: str) -> Version:
 
 
 class _CompDirs(NamedTuple):
-    rootdir: str
-    version: Version
     varspath: str
     ifortpath: str
     ifxpath: str
@@ -29,15 +31,15 @@ class _CompDirs(NamedTuple):
 
 @total_ordering
 class OneAPI:
-    COMPONENTS = ["compiler", "mkl", "tbb", "mpi"]
+    COMPONENTS = ["compiler", "mkl"] #, "tbb", "mpi"]
     FORTRAN = ["ifx", "ifort"]
     TARGET = "intel64"
 
     def __init__(self, dir: str) -> None:
-        self.dir = dir
-        self.version = None
-        self.ifort = ""
-        self.ifx = ""
+        self.dir: str = dir
+        self.version: Version = Version()
+        self.ifort: str = ""
+        self.ifx: str = ""
         self.components: Dict[str, str] = {}
 
     def ifort_path(self) -> str:
@@ -50,53 +52,47 @@ class OneAPI:
             return os.path.join(self.dir, self.ifx)
         return ""
 
-    def __lt__(self, other: OneAPIType) -> bool:
-        if isinstance(other, OneAPI):
-            return self.version < other.version
-        return False
+    def __lt__(self, other: Any) -> bool:
+        if not isinstance(other, OneAPI):
+            return False
+        return self.version < other.version
 
-    def __eq__(self, other: OneAPIType) -> bool:
-        if isinstance(other, OneAPI):
-            return self.version == other.version
-        return False
+    def __eq__(self, other: Any) -> bool:
+        if not isinstance(other, OneAPI):
+            return False
+        return self.version == other.version
 
-    def string(
+    def print(
         self,
+        detailed: bool = False,
         fortran: str = "any",
         components: List[str] = COMPONENTS,
-        verbose: bool = False,
-    ) -> str:
+    ) -> None:
         print_comp = {c: path for c, path in self.components.items() if c in components}
 
-        if verbose:
-            s = (
-                f"   Product: Intel oneAPI {self.version.major}\n"
-                f"   Version: {self.version}\n"
-            )
+        if detailed:
+            log.info("   Product: Intel oneAPI %s", self.version.major)
+            log.info("   Version: ", self.version)
             if fortran in ["any", "ifx"]:
-                s += f"       ifx: {self.ifx_path()}\n"
+                log.info("       ifx: %s", self.ifx_path())
             if fortran in ["any", "ifort"]:
-                s += f"     ifort: {self.ifort_path()}\n"
-            s += "Components:\n"
+                log.info("     ifort: %s", self.ifort_path())
+            log.info("Components:\n")
             for name, path in print_comp.items():
-                s += f"  - {name}: {path}\n"
+                log.info("  - %s: %s\n", name, path)
         else:
             compilers = []
             if fortran in ["any", "ifx"]:
                 compilers.append("ifx")
             if fortran in ["any", "ifort"]:
                 compilers.append("ifort")
-            s = (
-                f" * Product: Intel oneAPI {self.version.major}\n"
-                f"       Version: {self.version}\n"
-                f"     Compilers: {', '.join(compilers)}\n"
-                f"    Components: {', '.join(print_comp)}"
-            )
-        return s
+            log.info(" * Product: Intel oneAPI %s", self.version.major)
+            log.info("       Version: %s", self.version)
+            log.info("     Compilers: %s", ", ".join(compilers))
+            log.info("    Components: %s", ", ".join(print_comp))
 
-    @override
     @classmethod
-    def scan(cls, root_dir: str = "", verbose: bool = False) -> List[OneAPIType]:
+    def scan(cls, root_dir: str = "") -> List["OneAPI"]:
         if root_dir:
             dirs = [root_dir]
         else:
@@ -116,48 +112,46 @@ class OneAPI:
             scriptsuffix = ".bat"
             exesuffix = ".exe"
 
-        compdirs = _CompDirs()
-        compdirs.ifortpath = os.path.join(
-            osdir, "bin", OneAPI.TARGET, "ifort" + exesuffix
+        compdirs = _CompDirs(
+            ifortpath=os.path.join(osdir, "bin", OneAPI.TARGET, "ifort" + exesuffix),
+            ifxpath=os.path.join(osdir, "bin", "ifx" + exesuffix),
+            varspath=os.path.join("env", "vars" + scriptsuffix),
         )
-        compdirs.ifxpath = os.path.join(osdir, "bin", "ifx" + exesuffix)
-        compdirs.varspath = os.path.join("env", "vars" + scriptsuffix)
 
         scan_dirs = expand_dirs(dirs)
         scan_dirs = list(set(scan_dirs))  # remove duplicates, don't care for order
 
-        if verbose:
-            print("Scan directories:")
-            for dir in scan_dirs:
-                print(dir)
+        log.debug("Scan directories:")
+        for dir in scan_dirs:
+            log.debug(dir)
 
-        products = []
+        products: List[OneAPI] = []
         for rootdir in scan_dirs:
             allver = []
             if not os.path.isdir(rootdir):
                 continue
 
-            if verbose:
-                print("Scanning: " + rootdir)
+            log.debug("Scanning: %s", rootdir)
 
             for comp in OneAPI.COMPONENTS:
                 compdir = os.path.join(rootdir, comp)
                 if os.path.isdir(compdir):
                     for file in os.listdir(compdir):
-                        ver = Version.make_safe(file, 3)
+                        ver = Version.make_safe(file)
                         if ver and ver not in allver:
                             allver.append(ver)
             allver.sort(reverse=True)
 
-            if verbose:
-                print("Found potential versions:")
-                for ver in allver:
-                    print(f" * {ver}")
+            log.debug("Found potential versions:")
+            for ver in allver:
+                log.debug(" * %s", ver)
 
             for ver in allver:
                 obj = cls._scan_version(rootdir, ver, compdirs)
                 if obj is not None:
                     products.append(obj)
+
+            log.debug("number of versions found: %d", len(products))
 
         products.sort(reverse=True)
         return products
@@ -165,7 +159,7 @@ class OneAPI:
     @classmethod
     def _scan_version(
         cls, rootdir: str, ver: Version, compdirs: _CompDirs
-    ) -> Union[OneAPIType, None]:
+    ) -> Union["OneAPI", None]:
         obj = OneAPI(rootdir)
         obj.version = ver
         found_comps = 0
@@ -206,7 +200,7 @@ class OneAPIToolkit(Toolkit):
         self.fortran: str = fortran
         self.components: List[str] = []
         self.root_dir: str = root_dir
-        self.scanned: List[OneAPI] = []
+        self._found: List[OneAPI] = []
 
         if fortran in OneAPIToolkit.VALID_FORTRAN:
             if self.fortran == "none":
@@ -261,15 +255,11 @@ class OneAPIToolkit(Toolkit):
 
     def _get_vs_in_chain(self) -> Union[MSVCToolkit, None]:
         if self.in_chain():
-            print("In chain")
-            tk: Union[MSVCToolkit, None] = self.get_prev_toolkit()
-            print(tk)
+            tk: Union[Toolkit, None] = self.get_prev_toolkit()
             while tk:
-                print(tk)
                 if isinstance(tk, MSVCToolkit):
                     return tk
-                tk = tk.GetPreviousToolkit()
-        print("Not in chain")
+                tk = tk.get_prev_toolkit()
         return None
 
     @override
@@ -278,9 +268,7 @@ class OneAPIToolkit(Toolkit):
             return True
         tk = self._get_vs_in_chain()
         if tk is None:
-            log.error(
-                "oneAPI: Requires Visual Studio or Visual Studio Build Tools but not found"
-            )
+            log.error("oneAPI: Requires MSVCToolkit before OneAPIToolkit")
             return False
         log.info("oneAPI: Found Visual Studio in chain")
         return True
@@ -330,7 +318,7 @@ class OneAPIToolkit(Toolkit):
 
     @override
     @classmethod
-    def _from_args(cls, prefix: str, args: Sequence[str]) -> OneAPIType:
+    def _from_args(cls, prefix: str, args: Namespace) -> "OneAPIToolkit":
         ver = getattr(args, prefix + "ver")
         fortran = getattr(args, prefix + "fortran")
         dirs = getattr(args, prefix + "dir")
@@ -342,23 +330,22 @@ class OneAPIToolkit(Toolkit):
     @override
     def scan(self, select: bool = False) -> bool:
         try:
-            products = self.filter(OneAPI.scan(root_dir=self.root_dir))
+            products = self._filter(OneAPI.scan(root_dir=self.root_dir))
             if select:
-                best = self.select(products)
-                products = []
-                if best:
-                    products.append(best)
-            for product in products:
-                s = product.string(fortran=self.fortran, components=self.components)
-                if s:
-                    print(s)
+                best = self._select(products)
+                products = [best] if best else []
         except ScanError as e:
             log.exception(e)
             return False
-        self.scanned = products
+        self._found = products
         return bool(products)
 
-    def filter(self, products: List[OneAPI]) -> List[OneAPI]:
+    @override
+    def print(self, detailed: bool = False) -> None:
+        for product in self._found:
+            product.print(detailed, fortran=self.fortran, components=self.components)
+
+    def _filter(self, products: List[OneAPI]) -> List[OneAPI]:
         left = []
         for product in products:
             if self.fortran != "none":
@@ -381,7 +368,7 @@ class OneAPIToolkit(Toolkit):
             left.append(product)
         return left
 
-    def select(self, products: List[OneAPI]) -> Union[OneAPI, None]:
+    def _select(self, products: List[OneAPI]) -> Union[OneAPI, None]:
         # Already filtered and sorted
         if products:
             return products[0]
@@ -401,7 +388,7 @@ class OneAPIToolkit(Toolkit):
 
     @override
     def _get_env_script(self) -> str:
-        obj = self.scanned[0]
+        obj = self._found[0]
         # TODO Handle flags for vars (default is first)
         #
         # Windows:
