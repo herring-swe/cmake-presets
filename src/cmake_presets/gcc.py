@@ -134,19 +134,24 @@ class GCC:
             and bool(self.gfortran) == bool(other.gfortran)
         )
 
-    def print(self, detailed: bool = False, fortran: bool = True) -> None:
+    def print(
+        self, detailed: bool = False, cxx: bool = True, fortran: bool = True
+    ) -> None:
         if not log.isEnabledFor(logging.INFO):
             return
         if detailed:
             log.info(" Product: GNU Compiler Collection %s", self.version.major)
             log.info(" Version: %s", self.version)
             log.info(" Machine: %s", self.machine)
-            log.info("      cc: %s", self.gcc_path())
-            log.info("     g++: %s", self.gxx_path())
-            if fortran:
-                log.info("gfortran: %s", self.gfortran_path())
+            log.info("       C: %s", self.gcc_path())
+            if cxx and self.gxx:
+                log.info("     C++: %s", self.gxx_path())
+            if fortran and self.gfortran:
+                log.info(" Fortran: %s", self.gfortran_path())
         else:
-            lang = "C/C++"
+            lang = "C"
+            if cxx and self.gxx:
+                lang += "/C++"
             if fortran and self.gfortran:
                 lang += " and Fortran"
             log.info(" * Product: GNU Compiler Collection %s", self.version.major)
@@ -155,18 +160,21 @@ class GCC:
         log.info("")
 
     def set_binaries(
-        self, gcc: str, gxx: str, gfortran: Union[str, None], test: bool = False
+        self,
+        gcc: str,
+        gxx: Union[str, None],
+        gfortran: Union[str, None],
+        test: bool = False,
     ) -> bool:
         if test:
             if not self.test_bin(gcc):
                 return False
             if not self.test_bin(gxx):
-                return False
+                gxx = ""
             if not self.test_bin(gfortran):
-                # Remove it and continue
-                gfortran = None
+                gfortran = ""
         self.gcc = gcc
-        self.gxx = gxx
+        self.gxx = gxx if gxx else ""
         self.gfortran = gfortran if gfortran else ""
         return True
 
@@ -199,9 +207,6 @@ class GCC:
                     )
                     log.debug(s, fn)
                 return False
-
-            if debug:
-                log.debug("%s version reports:", fn)
 
             cmd = [fn, "-dumpfullversion", "-dumpversion"]
             lines = subprocess.check_output(cmd).decode().splitlines()  # noqa: S603
@@ -295,10 +300,13 @@ class GCC:
         products: List[GCC] = []
         for dir in found:
             for vals in found[dir].values():
-                # Keep only those where gcc and g++ is paired
-                # gfortran may be missing as this is filtered out later
-                if not (vals[0] and vals[1]):
-                    continue
+                # # Keep only those where gcc is found.
+                # # g++ or gfortran may be missing and this can be filtered out later
+                # if not vals[0]:
+                #     for i in (1, 2):
+                #         if vals[i]:
+                #             log.debug("Skipping due to no gcc found: %s", vals[i])
+                #     continue
 
                 obj = GCC(dir)
                 if not obj.set_binaries(
@@ -331,11 +339,13 @@ class GCCToolkit(Toolkit):
         self,
         name: str = "",
         ver: Union[str, Version] = "",
+        cxx: bool = True,
         fortran: bool = False,
         scan_dirs: Union[List[str], None] = None,
         scan_extradirs: Union[List[str], None] = None,
     ) -> None:
         self.version: Version = gcc_version(ver)
+        self.with_cxx: bool = cxx
         self.with_fortran: bool = fortran
         self.scan_dirs: List[str] = scan_dirs if scan_dirs else []
         self.scan_extradirs: List[str] = scan_extradirs if scan_extradirs else []
@@ -382,9 +392,14 @@ class GCCToolkit(Toolkit):
             help="GCC Version. Can be in form 8, 8.2 or 8.2.0",
         )
         parser.add_argument(
+            f"--{prefix}no_cxx",
+            action="store_false",
+            help="Flag to specify that C++ is not needed",
+        )
+        parser.add_argument(
             f"--{prefix}fortran",
             action="store_true",
-            help="Flag to specify if GNU Fortran is needed",
+            help="Flag to specify that Fortran is needed",
         )
         parser.add_argument(
             f"--{prefix}dir",
@@ -407,10 +422,13 @@ class GCCToolkit(Toolkit):
     @classmethod
     def _from_args(cls, prefix: str, args: Namespace) -> "GCCToolkit":
         ver = getattr(args, prefix + "ver")
+        cxx = getattr(args, prefix + "no_cxx")
         fortran = getattr(args, prefix + "fortran")
         dirs = getattr(args, prefix + "dir")
         extra_dirs = getattr(args, prefix + "extradir")
-        return cls(ver=ver, fortran=fortran, scan_dirs=dirs, scan_extradirs=extra_dirs)
+        return cls(
+            ver=ver, cxx=cxx, fortran=fortran, scan_dirs=dirs, scan_extradirs=extra_dirs
+        )
 
     @override
     def scan(self, select: bool = False) -> bool:
@@ -430,14 +448,22 @@ class GCCToolkit(Toolkit):
     @override
     def print(self, detailed: bool = False) -> None:
         for product in self._found:
-            product.print(detailed, fortran=self.with_fortran)
+            product.print(detailed, cxx=self.with_cxx, fortran=self.with_fortran)
 
     def _filter(self, products: List[GCC]) -> List[GCC]:
-        if not self.version or self.with_fortran:
+        if not self.version and not self.with_cxx and not self.with_fortran:
+            log.debug("No filtering required")
             return products
+
+        log.debug("Filtering using:")
+        log.debug("     cxx required: %s", self.with_cxx)
+        log.debug(" fortran required: %s", self.with_fortran)
+        log.debug(" version required: %s", self.version)
 
         left = []
         for product in products:
+            if self.with_cxx and not product.gxx:
+                continue
             if self.with_fortran and not product.gfortran:
                 continue
             if not self.version.parts_equal(product.version):
