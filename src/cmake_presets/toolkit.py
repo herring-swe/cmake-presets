@@ -303,11 +303,11 @@ class Toolkit(metaclass=ABCMeta):  # FIXME: Rename to Generator
             raise RuntimeError("Toolkit cannot execute on this platform...")
 
         if platform.system() == "Windows":
-            script += f"echo {self._MARKER}\n"
-            script += "set"
+            script += f"\necho {self._MARKER}\n"
+            script += "\nset"
         else:
-            script += f'echo "{self._MARKER}"\n'
-            script += "/usr/bin/env"
+            script += f'\necho "{self._MARKER}"\n'
+            script += "\n/usr/bin/env"
 
         debuglog = log.isEnabledFor(logging.DEBUG)
 
@@ -341,14 +341,14 @@ class Toolkit(metaclass=ABCMeta):  # FIXME: Rename to Generator
                 )
             except subprocess.CalledProcessError as err:
                 raise ToolkitError(
-                    "ERROR: Failed to run environment script. Verify that correct version of tools installed in standard paths"
+                    "Failed to run environment script. Verify that correct version of tools installed in standard paths"
                 ) from err
 
-            seek_marker = True
+            found_marker = True
             for line in output:
-                if seek_marker:
+                if not found_marker:
                     if line == self._MARKER:
-                        seek_marker = False
+                        found_marker = False
                     elif debuglog:
                         log.debug("> %s", line)  # Line from script
                     continue
@@ -359,6 +359,12 @@ class Toolkit(metaclass=ABCMeta):  # FIXME: Rename to Generator
 
                 dstenv[name] = val
 
+        if not found_marker:
+            raise ToolkitError(
+                "No marker found when running script. Probably the script ended prematurely."
+            )
+        if not dstenv:
+            raise ToolkitError("Script did not write environment variables.")
         return dstenv
 
     ############################################################
