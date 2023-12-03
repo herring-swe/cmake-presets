@@ -12,6 +12,8 @@ from cmake_presets import (  # type: ignore
     generate_presets_file,
 )
 
+# TODO System dependent tests. Need to make mockup data
+
 
 def main(skip_bad: bool = False) -> Tuple[Set[str], Set[str], Set[str]]:
     msvc = MSVCToolkit(name="vs2019", ver="2019", tools="v142")

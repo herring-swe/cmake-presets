@@ -12,6 +12,7 @@ from .util import (
     EnvDict,
     ScanError,
     Version,
+    VersionSpec,
     expand_dirs,
     override,  # Compatibility imports
 )
@@ -21,8 +22,8 @@ GCCType = TypeVar("GCCType", bound="GCC")
 GCCToolkitType = TypeVar("GCCToolkitType", bound="GCCToolkit")
 
 
-def gcc_version(val: Union[str, Version]) -> Version:
-    return Version.make(val, minlen=1, maxlen=3)
+def gcc_version(val: Union[str, VersionSpec]) -> VersionSpec:
+    return VersionSpec.make(val)  # Care about length?
 
 
 # --------------------------- Scan worker function --------------------------- #
@@ -338,18 +339,19 @@ class GCCToolkit(Toolkit):
     def __init__(
         self,
         name: str = "",
-        ver: Union[str, Version] = "",
+        ver: Union[str, VersionSpec] = "",
         cxx: bool = True,
         fortran: bool = False,
         scan_dirs: Union[List[str], None] = None,
         scan_extradirs: Union[List[str], None] = None,
     ) -> None:
-        self.version: Version = gcc_version(ver)
+        self.version: VersionSpec = gcc_version(ver)
         self.with_cxx: bool = cxx
         self.with_fortran: bool = fortran
         self.scan_dirs: List[str] = scan_dirs if scan_dirs else []
         self.scan_extradirs: List[str] = scan_extradirs if scan_extradirs else []
 
+        self._scanned: Union[List[GCC], None] = None
         self._found: List[GCC] = []
 
         required_vars: Set[str] = {"CC", "CXX"}
@@ -359,7 +361,7 @@ class GCCToolkit(Toolkit):
         if not name:
             parts: List[str] = []
             if self.version:
-                parts.append(f"gcc{self.version.joined()}")
+                parts.append(f"gcc{self.version.l_val.joined()}")
             else:
                 parts.append("gcc_latest")
             name = "_".join(parts)
@@ -431,24 +433,40 @@ class GCCToolkit(Toolkit):
         )
 
     @override
-    def scan(self, select: bool = False) -> bool:
-        try:
-            products: List[GCC] = self._filter(
-                GCC.scan(dirs=self.scan_dirs, extra_dirs=self.scan_extradirs)
-            )
-            if select:
-                best = self._select(products)
-                products = [best] if best else []
-        except ScanError as e:
-            log.exception(e)
-            return False
-        self._found = products
-        return bool(products)
+    def scan(self) -> int:
+        self._found = []  # Reset filter and select
+        if self._scanned is None:
+            self._scanned = []  # Mark as scanned
+            try:
+                self._scanned = GCC.scan(
+                    dirs=self.scan_dirs, extra_dirs=self.scan_extradirs
+                )
+            except ScanError as e:
+                log.exception(e)
+        return len(self._scanned)
+
+    @override
+    def scan_filter(self) -> int:
+        self.scan()
+        if self._scanned:
+            self._found = self._filter(self._scanned)
+        return len(self._found)
+
+    @override
+    def scan_select(self) -> bool:
+        self.scan_filter()
+        if len(self._found) > 1:
+            self._found = [self._found[0]]
+        return bool(self._found)
 
     @override
     def print(self, detailed: bool = False) -> None:
-        for product in self._found:
-            product.print(detailed, cxx=self.with_cxx, fortran=self.with_fortran)
+        if self._found:
+            for item in self._found:
+                item.print(detailed, cxx=self.with_cxx, fortran=self.with_fortran)
+        elif self._scanned:
+            for item in self._scanned:
+                item.print(detailed)
 
     def _filter(self, products: List[GCC]) -> List[GCC]:
         if not self.version and not self.with_cxx and not self.with_fortran:
@@ -466,16 +484,10 @@ class GCCToolkit(Toolkit):
                 continue
             if self.with_fortran and not product.gfortran:
                 continue
-            if not self.version.parts_equal(product.version):
+            if not self.version.matches(product.version):
                 continue
             left.append(product)
         return left
-
-    def _select(self, products: List[GCC]) -> Union[GCC, None]:
-        # Already filtered and sorted
-        if products:
-            return products[0]
-        return None
 
     @override
     def _add_post_env_vars(self, env: EnvDict) -> None:

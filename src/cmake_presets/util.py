@@ -1,9 +1,11 @@
 import logging
 import os
+import re
 import stat
 import sys
 from abc import ABCMeta
 from collections import UserDict
+from enum import Enum
 from functools import total_ordering
 from typing import Any, Dict, List, Sequence, Set, TypeVar, Union
 
@@ -11,6 +13,19 @@ VersionType = TypeVar("VersionType", bound="Version")
 EnvDictType = TypeVar("EnvDictType", bound="EnvDict")
 SingletonABCMetaType = TypeVar("SingletonABCMetaType", bound="SingletonABCMeta")
 log = logging.getLogger(__name__)
+
+# RE_TAG = r"([a-z])"
+RE_VERSION = r"(\d+(?:\.\d+){0,3})"
+RE_OP_COMMON = r"<|lt|<=|lte|=|eq|>=|gte|>|gt"
+RE_OP = f"({RE_OP_COMMON})"
+RE_OP_SINGLE = f"({RE_OP_COMMON}|range)"
+
+# Single version, optional op (default EQ)
+SPEC_SINGLE = re.compile(f"^\s*{RE_OP_SINGLE}?\s*{RE_VERSION}\s*$", re.I)
+# Double version, separated by comma. Ops are mandatory
+SPEC_RANGE = re.compile(
+    f"^\s*{RE_OP}\s*{RE_VERSION}\s*,\s*{RE_OP}\s*{RE_VERSION}\s*$", re.I
+)
 
 # fmt: off
 if sys.version_info >= (3, 8):
@@ -119,6 +134,9 @@ class Version(Sequence[int]):
             strings: List[str] = val.split(sep)
             try:
                 for i in range(min(4, len(strings))):
+                    ival = int(strings[i])
+                    if ival < 0:
+                        break
                     parts.append(int(strings[i]))
             except ValueError as e:
                 raise ValueError(f"Version is not numerical: {val}\n+{str(e)}") from e
@@ -200,50 +218,275 @@ class Version(Sequence[int]):
         return f"Version ({str(self.parts)})"
 
     def __lt__(self, other: Any) -> bool:
-        slen = len(self)
-        if not isinstance(other, Version):
-            try:
-                other = Version(other)
-                if not other:
-                    return False
-            except Exception:
-                return False
+        return self.parts_lt(other, True)  # Full comparison
+        # slen = len(self)
+        # if not isinstance(other, Version):
+        #     try:
+        #         other = Version(other)
+        #         if not other:
+        #             return False
+        #     except Exception:
+        #         return False
 
-        olen = len(other)
-        for idx in range(4):
-            if idx < slen and idx < olen:
-                # Numerical comparison
-                if self[idx] == other[idx]:
-                    continue
-                return self[idx] < other[idx]
+        # olen = len(other)
+        # for idx in range(4):
+        #     if idx < slen and idx < olen:
+        #         # Numerical comparison
+        #         if self[idx] == other[idx]:
+        #             continue
+        #         return self[idx] < other[idx]
 
-        if slen == olen:
-            return True  # Equal
-        return slen < olen  # Shorter is less than
+        # if slen == olen:
+        #     return False  # Equal
+        # return slen < olen  # Shorter is less than
 
     def __eq__(self, other: Any) -> bool:
-        return self.parts_equal(other, True)
+        return self.parts_equal(other, True)  # Full comparison
 
-    def parts_equal(
-        self, other: Union["Version", int, str, List[str]], full: bool = False
+    def parts_lt(
+        self, other: Union["Version", str, int, None], full: bool = False
     ) -> bool:
         """
-        Matches either fully or as long as this version is defined
-        WARNING: Equality is asymmetric if not full
+        Matches either fully or either version appended with zeroes
+        WARNING: Equality is asymmetric if full is not True
         """
-        if not isinstance(other, Version):
+        if other is None:
+            return not bool(self)  # None is less than a value
+        if isinstance(other, int):
+            other = Version(other)
+        if isinstance(other, str):
             try:
-                other = Version(other)
+                other = Version.make(other)
+            except Exception:
+                other = None
+            if not other:
+                return not bool(self)
+
+        lself = len(self)
+        lother = len(other)
+        if full or lself == lother:
+            return self.parts < other.parts
+        for idx in range(max(lself, lother)):
+            lval = self.parts[idx] if idx < lself else 0
+            oval = other.parts[idx] if idx < lother else 0
+            if lval < oval:
+                return True
+        return False
+
+        if full:
+            return self.parts < other.parts
+        print(str(self) + " < " + str(other))
+        for idx in range(min(len(self), len(other))):
+            if self.parts[idx] < other.parts[idx]:
+                return True
+        return len(self) < len(other)
+
+    def parts_equal(
+        self, other: Union["Version", str, int, None], full: bool = False
+    ) -> bool:
+        """
+        Matches either fully or either version appended with zeroes
+        WARNING: Equality is asymmetric if full is not True
+        """
+        if other is None:
+            return bool(self)
+        if isinstance(other, int):
+            other = Version(other)
+        if isinstance(other, str):
+            try:
+                other = Version.make(other)
                 if not other:
                     return False
             except Exception:
                 return False
-        if full:
+        lself = len(self)
+        lother = len(other)
+        if full or lself == lother:
             return self.parts == other.parts
-        for idx in range(len(self.parts)):
-            if self.parts[idx] != other.parts[idx]:
+        for idx in range(max(lself, lother)):
+            lval = self.parts[idx] if idx < lself else 0
+            oval = other.parts[idx] if idx < lother else 0
+            if lval != oval:
                 return False
         return True
+
+
+class VersionOp(Enum):
+    NONE = 0
+    LT = 1
+    LTE = 2
+    EQ = 3
+    GTE = 4
+    GT = 5
+
+    @classmethod
+    def make(
+        cls, val: Union[str, None], default: Union["VersionOp", None] = None
+    ) -> "VersionOp":
+        if isinstance(val, str):
+            val = val.lower()
+            if val in ["<", "lt"]:
+                return cls(cls.LT)
+            if val in ["<=", "lte"]:
+                return cls(cls.LTE)
+            if val in ["=", "eq"]:
+                return cls(cls.EQ)
+            if val in [">=", "gte"]:
+                return cls(cls.GTE)
+            if val in [">", "gt"]:
+                return cls(cls.GT)
+        if default is not None:
+            return default
+        return cls(cls.NONE)
+
+    def matches(self, lhs: Version, rhs: Version) -> bool:
+        if self == VersionOp.LT:
+            return lhs.parts_lt(rhs)
+        if self == VersionOp.LTE:
+            return lhs.parts_lt(rhs) or lhs.parts_equal(rhs)
+        if self == VersionOp.EQ:
+            return lhs.parts_equal(rhs)
+        if self == VersionOp.GTE:
+            return not lhs.parts_lt(rhs)
+        if self == VersionOp.GT:
+            return not lhs.parts_lt(rhs) and not lhs.parts_equal(rhs)
+        raise ValueError("Undefined operator comparison NONE")
+
+    def __bool__(self) -> bool:
+        return self.value != VersionOp.NONE
+
+    def __str__(self) -> str:
+        if self == VersionOp.LT:
+            return "<"
+        if self == VersionOp.LTE:
+            return "<="
+        if self == VersionOp.EQ:
+            return "="
+        if self == VersionOp.GTE:
+            return ">="
+        if self == VersionOp.GT:
+            return ">"
+        return "Undefined Op"
+
+
+class VersionSpec:
+    def __init__(
+        self,
+        l_val: Any = None,
+        l_op: VersionOp = VersionOp.EQ,
+        u_val: Union[Version, None] = None,
+        u_op: VersionOp = VersionOp.NONE,
+    ) -> None:
+        self.l_val = Version()
+        self.l_op = l_op
+        self.u_val = Version()
+        self.u_op = u_op
+
+        if l_val is None:
+            return
+
+        if isinstance(l_val, VersionSpec):
+            self.l_val = l_val.l_val
+            self.l_op = l_val.l_op
+            self.u_val = l_val.u_val
+            self.u_op = l_val.u_op
+        elif isinstance(l_val, Version):
+            self.l_val = l_val
+            self.l_op = l_op
+            if isinstance(u_val, Version):
+                self.u_val = u_val
+            self.u_op = u_op
+        else:
+            raise ValueError(f"Unexpected type: {type(l_val)}")
+
+    @classmethod
+    def make(cls, val: Union[str, "VersionSpec", None]) -> "VersionSpec":
+        if val is None or isinstance(val, VersionSpec):
+            return cls(val)
+        m = SPEC_SINGLE.match(val)
+        if m:
+            opstr = m.group(1)
+            ver = Version.make(m.group(2))
+            if opstr == "range":
+                next = ver.parts.copy()
+                next[len(next) - 1] += 1
+                ver2 = Version(next)
+                print(f"range: {ver} -> {ver2}")
+                return cls(ver, VersionOp.GTE, ver2, VersionOp.LT)
+            else:
+                op = VersionOp.make(m.group(1), VersionOp.EQ)
+                return cls(ver, op)
+        m = SPEC_RANGE.match(val)
+        if m:
+            l_op = VersionOp.make(m.group(1))
+            l_val = Version.make(m.group(2))
+            u_op = VersionOp.make(m.group(3))
+            u_val = Version.make(m.group(4))
+
+            if not l_op or not u_op:  # Regex guard against this
+                raise ValueError(f"Undefined operators in {val}")
+
+            if l_op == VersionOp.EQ or u_op == VersionOp.EQ:
+                raise ValueError(f"Range cannot contain equality comparison: {val}")
+
+            if u_val < l_val:
+                # Swap positions
+                tmp_val = l_val
+                tmp_op = l_op
+                l_op = u_op
+                l_val = u_val
+                u_op = tmp_op
+                u_val = tmp_val
+
+            # Check for impossible spec
+            if l_op in [VersionOp.LT, VersionOp.LTE] and u_op in [
+                VersionOp.GT,
+                VersionOp.GTE,
+            ]:
+                raise ValueError(f"No version can satisfy specification: {val}")
+
+            return cls(l_val, l_op, u_val, u_op)
+        raise ValueError(f"Could not parse specification: {val}")
+
+    # @classmethod
+    # def make_safe(cls, val: Union[str, "VersionSpec", None]) -> "VersionSpec":
+    #     try:
+    #         return cls.make_safe(val)
+    #     except ValueError:
+    #         pass
+    #     return cls()
+
+    def matches(self, ver: Version) -> bool:
+        match = True  # No spec
+        if self.l_val and self.u_val:  # Range
+            match = self.l_op.matches(ver, self.l_val) and self.u_op.matches(
+                ver, self.u_val
+            )
+        elif self.l_val:  # Single
+            match = self.l_op.matches(ver, self.l_val)
+        if log.isEnabledFor(logging.DEBUG):
+            log.debug("Version spec: %s matches %s => %s", self, ver, match)
+        return match
+
+    def __repr__(self) -> str:
+        if self.u_val or self.u_op != VersionOp.NONE:
+            return f"VersionSpec({self.l_val}, {self.l_op}, {self.u_val}, {self.u_op})"
+        return f"VersionSpec({self.l_val}, {self.l_op})"
+
+    def __str__(self) -> str:
+        if self.u_val or self.u_op != VersionOp.NONE:
+            return f"{self.l_op} {self.l_val} and {self.u_op} {self.u_val}"
+        return f"{self.l_op} {self.l_val}"
+
+    def __eq__(self, other: Any) -> bool:
+        if not isinstance(other, VersionSpec):
+            return False
+        return (
+            self.l_op == other.l_op
+            and self.l_val == other.l_val
+            and self.u_op == other.u_op
+            and self.u_val == other.u_val
+        )
 
 
 class EnvDict(StrUserDict):

@@ -172,21 +172,36 @@ class Toolkit(metaclass=ABCMeta):  # FIXME: Rename to Generator
         raise NotImplementedError
 
     ############################################################
-    # The actual grunt work of every toolkit
+    # Scanning, selection and information printing
     ############################################################
 
     @abstractmethod
-    def scan(self, select: bool = False) -> bool:
-        """Scan for compatible toolkits, print out the result and
-        store the results internally for later use in generation methods
-        If select is true, scan must result in the best toolkit
-        if select is false, scan must contain all matching toolkits
-        return True on successfully found toolkit(s)
+    def scan(self) -> int:
+        """Scan for all possible toolkits without filtering. Result should be cached.
+        Return number of toolkits found
+        """
+        raise NotImplementedError
+
+    @abstractmethod
+    def scan_filter(self) -> int:
+        """Scan and filter results according to own specification. Result must be stored
+        internally.
+        Return number of toolkits found
+        """
+        raise NotImplementedError
+
+    @abstractmethod
+    def scan_select(self) -> bool:
+        """Scan and select the best result. Result must be stored internally
+        Return true if found
         """
         raise NotImplementedError
 
     @abstractmethod
     def print(self, detailed: bool = False) -> None:
+        """Print information about toolkit(s) either from static information or scan results.
+        Result must show the information based on last scan performed.
+        """
         raise NotImplementedError
 
     ############################################################
@@ -247,6 +262,7 @@ class Toolkit(metaclass=ABCMeta):  # FIXME: Rename to Generator
         from environment run script"""
         return None
 
+    @final
     def _get_pre_environment(self) -> EnvDict:
         env = EnvDict.os()
         tk: Union[Toolkit, None] = self.get_prev_toolkit()
@@ -463,13 +479,21 @@ class ScriptToolkit(Toolkit):
         super().__init__(name, required_vars)
 
     @override
-    def scan(self, select: bool = False) -> bool:
+    def scan(self) -> int:
         """In this case we only need to verify script existence"""
         if os.path.isfile(self.script):
-            return True
+            return 1
         else:
             log.error("Script does not exist: %s", self.script)
-        return False
+        return 0
+
+    @override
+    def scan_filter(self) -> int:
+        return self.scan()
+
+    @override
+    def scan_select(self) -> bool:
+        return self.scan() != 0
 
     @override
     def print(self, detailed: bool = False) -> None:
@@ -600,11 +624,26 @@ class ToolkitChain(Toolkit):
         return ret
 
     @override
-    def scan(self, select: bool = False) -> bool:
+    def scan(self) -> int:
+        num = 0
         for toolkit in self._toolkits:
-            if not toolkit.scan(select=select):
-                return False
-        return True
+            num += toolkit.scan()
+        return num
+
+    @override
+    def scan_filter(self) -> int:
+        num = 0
+        for toolkit in self._toolkits:
+            num += toolkit.scan_filter()
+        return num
+
+    @override
+    def scan_select(self) -> bool:
+        ret = True
+        for toolkit in self._toolkits:
+            if not toolkit.scan_select():
+                ret = False
+        return ret
 
     @override
     def print(self, detailed: bool = False) -> None:

@@ -11,6 +11,8 @@ from .toolkit import Toolkit
 from .util import (
     ScanError,
     Version,
+    VersionOp,
+    VersionSpec,
     override,  # Compatibility imports
 )
 
@@ -19,27 +21,32 @@ MSVCType = TypeVar("MSVCType", bound="MSVC")
 BuildToolType = TypeVar("BuildToolType", bound="BuildTool")
 
 
-def vs_version(val: Union[str, Version]) -> Version:
-    return Version.make(val, maxlen=1)
+def vs_version(val: Union[str, VersionSpec]) -> VersionSpec:
+    return VersionSpec.make(val)  # Only allow major?
 
 
-def build_tools_version(val: Union[str, Version]) -> Version:
+def build_tools_version(val: Union[str, VersionSpec]) -> VersionSpec:
     if val is not None and isinstance(val, str) and val.startswith("v"):
-        # FIXME. This comparison needs to be a range
         if val == "v143":
-            return Version(14, 30)
+            return VersionSpec(
+                Version(14, 30), VersionOp.GTE, Version(14, 40), VersionOp.LT
+            )
         if val == "v142":
-            return Version(14, 20)
+            return VersionSpec(
+                Version(14, 20), VersionOp.GTE, Version(14, 30), VersionOp.LT
+            )
         if val == "v141":
-            return Version(14, 10)
+            return VersionSpec(
+                Version(14, 10), VersionOp.GTE, Version(14, 20), VersionOp.LT
+            )
         raise ValueError(
             "Only build tools alternative version formats v143, v142 or v141 are supported"
         )
-    return Version.make(val, minlen=2, maxlen=3)
+    return VersionSpec.make(val)
 
 
-def win_sdk_version(val: Union[str, Version]) -> Version:
-    return Version.make(val, minlen=4)
+def win_sdk_version(val: Union[str, VersionSpec]) -> VersionSpec:
+    return VersionSpec.make(val)  # Only allow full x.x.x.x version?
 
 
 @total_ordering
@@ -244,14 +251,15 @@ class MSVCToolkit(Toolkit):
     def __init__(
         self,
         name: str = "",
-        ver: Union[str, Version] = "",
-        tools: Union[str, Version] = "",
-        winsdk: Union[str, Version] = "",
+        ver: Union[str, VersionSpec] = "",
+        tools: Union[str, VersionSpec] = "",
+        winsdk: Union[str, VersionSpec] = "",
     ) -> None:
         self.vs_version = vs_version(ver)
         self.tools_version = build_tools_version(tools)
         self.winsdk_version = win_sdk_version(winsdk)
 
+        self._scanned: Union[List[MSVC], None] = None
         self._found: List[MSVC] = []
 
         required_vars = {"CC", "CXX"}
@@ -285,25 +293,24 @@ class MSVCToolkit(Toolkit):
     def _add_arguments(prefix: str, parser: _ArgumentGroup) -> None:
         parser.add_argument(
             f"--{prefix}ver",
-            choices=[Version(2017), Version(2019), Version(2022)],
             default=None,
             metavar="VER",
             type=vs_version,
-            help="Visual Studio Version. By default it will select the latest with compatible build tools",
+            help="Visual Studio version specification (i.e. 2017, 2019 or 2022). Default is latest with compatible build tools",
         )
         parser.add_argument(
             f"--{prefix}tools",
             default=None,
             metavar="VER",
             type=build_tools_version,
-            help="MSVC Build Tools. Can be in form v142, 14.20 or 14.20.27508. Default is latest from Visual Studio Version",
+            help="MSVC Build Tools version specification (i.e. 14.20 or 14.20.27508). Special forms v141, 142 and v143 accepted. Default is latest from Visual Studio Version",
         )
         parser.add_argument(
             f"--{prefix}winsdk",
-            action="store",
+            default=None,
             metavar="VER",
             type=win_sdk_version,
-            help="Windows SDK Version. Must be in full version form: 10.0.17763.0. Default is latest",
+            help="Windows SDK version specification (i.e. 10.0.17763.0). Default is latest",
         )
 
     @override
@@ -315,16 +322,31 @@ class MSVCToolkit(Toolkit):
         return cls(ver=ver, tools=tools, winsdk=winsdk)
 
     @override
-    def scan(self, select: bool = False, verbose: bool = False) -> bool:
-        try:
-            products = self._filter(MSVC.scan_products())
-            if select:
-                best = self._select(products)
-                products = [best] if best else []
-        except ScanError as e:
-            log.exception(e)
-            return False
-        self._found = products
+    def scan(self) -> int:
+        self._found = []  # Reset filter and select
+        if self._scanned is None:
+            self._scanned = []  # Mark as scanned
+            try:
+                self._scanned = MSVC.scan_products()
+            except ScanError as e:
+                log.exception(e)
+        return len(self._scanned)
+
+    @override
+    def scan_filter(self) -> int:
+        self.scan()
+        if self._scanned:
+            self._found = self._filter(self._scanned)
+        return len(self._found)
+
+    @override
+    def scan_select(self) -> bool:
+        self.scan_filter()
+        if self._found:
+            sel = self._found[0]
+            if sel.vcBuildTools:
+                sel.vcBuildTools = [sel.vcBuildTools[0]]
+            self._found = [sel]
         return bool(self._found)
 
     def _filter(self, products: List[MSVC]) -> List[MSVC]:
@@ -335,16 +357,13 @@ class MSVCToolkit(Toolkit):
         for product in products:
             # print(product.productVersion)
             # print(self.vs_version)
-            if self.vs_version and product.productVersion != self.vs_version:
+            if not self.vs_version.matches(product.productVersion):
                 continue
 
             if self.tools_version:
                 left_tools: List[BuildTool] = []
                 for tools in product.vcBuildTools:
-                    if len(self.tools_version) >= 3:
-                        if tools.version == self.tools_version:
-                            left_tools.append(tools)
-                    elif tools.version >= self.tools_version:
+                    if self.tools_version.matches(tools.version):
                         left_tools.append(tools)
                 if not left_tools:
                     continue
@@ -353,16 +372,14 @@ class MSVCToolkit(Toolkit):
             left.append(product)
         return left
 
-    def _select(self, products: List[MSVC]) -> Union[MSVC, None]:
-        # Already filtered and sorted
-        if products:
-            return products[0]
-        return None
-
     @override
     def print(self, detailed: bool = False) -> None:
-        for product in self._found:
-            product.print(detailed)
+        if self._found:
+            for item in self._found:
+                item.print(detailed)
+        elif self._scanned:
+            for item in self._scanned:
+                item.print(detailed)
 
     @override
     def get_base_json(self) -> dict:
@@ -390,11 +407,16 @@ class MSVCToolkit(Toolkit):
 
     @override
     def _get_env_script(self) -> str:
+        if not self._found:
+            raise RuntimeError("No product selected")
+        sel = self._found[0]
+        build_tools = sel.vcBuildTools[0]
+
         str = "@echo off\n"
         # TODO Scan for VSXXXXINSTALLDIR environment variables
         # TODO Support arch, winsdk_version and vc_version - But only possible without oneAPI (for now)
         # call "C:\Program Files (x86)\Microsoft Visual Studio\2019\Professional\VC\Auxiliary\Build\vcvarsall.bat" amd64
-        str += f'call "C:\\Program Files (x86)\\Microsoft Visual Studio\\{self.vs_version.major}\\Professional\\VC\\Auxiliary\\Build\\vcvarsall.bat" amd64\n'
+        str += f'call "C:\\Program Files (x86)\\Microsoft Visual Studio\\{sel.productVersion}\\Professional\\VC\\Auxiliary\\Build\\vcvarsall.bat" amd64 -vcvars_ver={build_tools.version}\n'
         str += "set CC=cl.exe\n"
         str += "set CXX=cl.exe\n"
         return str

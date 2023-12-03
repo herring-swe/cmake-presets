@@ -80,7 +80,7 @@ def generate_presets_file(
         if kit.is_instance_supported():
             log.debug("generate: Current toolkit %s", kit.name)
             try:
-                if not kit.scan(select=True):
+                if kit.scan_select() == 0:
                     raise ToolkitError("No matches found")
                 log.info("Generating preset %s from selected kit:", kit.name)
                 kit.print(detailed=detailed_kit_info)
