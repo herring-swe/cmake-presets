@@ -2,11 +2,13 @@ import logging
 import os
 import re
 import stat
+import subprocess
 import sys
 from abc import ABCMeta
 from collections import UserDict
 from enum import Enum
 from functools import total_ordering
+from tempfile import TemporaryDirectory
 from typing import Any, Dict, List, Sequence, Set, TypeVar, Union
 
 VersionType = TypeVar("VersionType", bound="Version")
@@ -54,6 +56,10 @@ else:
 
 class ScanError(Exception):
     """Raised on severe scan errors"""
+
+
+class ExecuteError(Exception):
+    """Raised on execute errors"""
 
 
 class VersionMismatchError(Exception):
@@ -396,12 +402,14 @@ class VersionSpec:
             if isinstance(u_val, Version):
                 self.u_val = u_val
             self.u_op = u_op
+        elif not l_val:
+            return
         else:
             raise ValueError(f"Unexpected type: {type(l_val)}")
 
     @classmethod
     def make(cls, val: Union[str, "VersionSpec", None]) -> "VersionSpec":
-        if val is None or isinstance(val, VersionSpec):
+        if not val or isinstance(val, VersionSpec):
             return cls(val)
         m = SPEC_SINGLE.match(val)
         if m:
@@ -411,7 +419,6 @@ class VersionSpec:
                 next = ver.parts.copy()
                 next[len(next) - 1] += 1
                 ver2 = Version(next)
-                print(f"range: {ver} -> {ver2}")
                 return cls(ver, VersionOp.GTE, ver2, VersionOp.LT)
             else:
                 op = VersionOp.make(m.group(1), VersionOp.EQ)
@@ -597,6 +604,12 @@ class EnvDict(StrUserDict):
     def append_path(self, name: str, value: Union[str, List[str]]) -> None:
         self.add_path(name, value, append=True)
 
+    def __str__(self) -> str:
+        str = ""
+        for key, item in self.items():
+            str += f"{key}={item}\n"
+        return str
+
 
 def merge_cachevars(dst: Dict[str, Any], src: Dict[str, Any]) -> None:
     for name, val in src.items():
@@ -636,3 +649,78 @@ def is_exec_stat(st: os.stat_result) -> bool:
         or st.st_mode & stat.S_IXGRP
         or st.st_mode & stat.S_IXOTH
     )
+
+
+def execute_env_script(script: str, runenv: EnvDict) -> EnvDict:
+    """Execute environment script and return the environment difference in environment
+    run before and after the script
+    """
+
+    marker = "=#= ENVIRONMENT =#="
+
+    if sys.platform == "win32":
+        script += f"\necho {marker}\n"
+        script += "\nset"
+        script_name = "_checkenv.bat"
+    elif sys.platform == "linux":
+        script += f'\necho "{marker}"\n'
+        script += "\n/usr/bin/env"
+        script_name = "_checkenv.run"  # Let's not assume script type
+    else:
+        raise RuntimeError(f"Unsupported platform: {sys.platform}")
+
+    debuglog = log.isEnabledFor(logging.DEBUG)
+
+    # print(f"Generate environment settings for: " + self.GetEnvScriptInfo())
+
+    dstenv = EnvDict()
+    with TemporaryDirectory() as tmpdir:
+        tmpfile = os.path.join(tmpdir, script_name)
+
+        with open(tmpfile, "w", encoding="utf-8") as f:
+            f.write(script)
+        if debuglog:
+            log.debug("Wrote script to: %s", tmpfile)
+            log.debug(script)
+
+        if sys.platform != "win32":
+            st = os.stat(tmpfile)
+            os.chmod(tmpfile, st.st_mode | stat.S_IEXEC)
+
+        try:
+            output = (
+                subprocess.check_output(tmpfile, env=dict(runenv)).decode().splitlines()
+            )
+        except subprocess.CalledProcessError as err:
+            raise ExecuteError(f"Failed to run environment script: {err}") from err
+
+        found_marker = True
+        name = None
+        val = None
+        for line in output:
+            if not found_marker:
+                if line == marker:
+                    found_marker = False
+                elif debuglog:
+                    log.debug("> %s", line)  # Line from script
+                continue
+
+            p = line.split("=", 1)
+            if len(p) == 2 and p[0]:
+                if name:
+                    dstenv[name] = val
+                name = p[0]
+                val = p[1]
+            elif val:
+                val += "\n" + line
+
+        if name:
+            dstenv[name] = val
+
+    if not found_marker:
+        raise ExecuteError(
+            "No marker found when running script. Probably the script ended prematurely."
+        )
+    if not dstenv:
+        raise ExecuteError("Script did not write environment variables.")
+    return dstenv

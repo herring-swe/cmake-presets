@@ -422,7 +422,9 @@ class GCCToolkit(Toolkit):
 
     @override
     @classmethod
-    def _from_args(cls, prefix: str, args: Namespace) -> "GCCToolkit":
+    def _from_args(cls, prefix: str, args: Union[Namespace, None]) -> "GCCToolkit":
+        if args is None:
+            return cls()
         ver = getattr(args, prefix + "ver")
         cxx = getattr(args, prefix + "no_cxx")
         fortran = getattr(args, prefix + "fortran")

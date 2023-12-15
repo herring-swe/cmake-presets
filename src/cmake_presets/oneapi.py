@@ -335,7 +335,9 @@ class OneAPIToolkit(Toolkit):
 
     @override
     @classmethod
-    def _from_args(cls, prefix: str, args: Namespace) -> "OneAPIToolkit":
+    def _from_args(cls, prefix: str, args: Union[Namespace, None]) -> "OneAPIToolkit":
+        if args is None:
+            return cls()
         ver = getattr(args, prefix + "ver")
         fortran = getattr(args, prefix + "fortran")
         dirs = getattr(args, prefix + "dir")

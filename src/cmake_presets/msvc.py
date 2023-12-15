@@ -315,7 +315,9 @@ class MSVCToolkit(Toolkit):
 
     @override
     @classmethod
-    def _from_args(cls, prefix: str, args: Namespace) -> "MSVCToolkit":
+    def _from_args(cls, prefix: str, args: Union[Namespace, None]) -> "MSVCToolkit":
+        if args is None:
+            return cls()
         ver = getattr(args, prefix + "ver")
         tools = getattr(args, prefix + "tools")
         winsdk = getattr(args, prefix + "winsdk")

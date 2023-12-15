@@ -3,18 +3,17 @@ import logging
 import os
 import platform
 import shutil
-import stat
-import subprocess
 import sys
 from abc import ABCMeta, abstractmethod
 from argparse import Namespace, _ArgumentGroup
 from copy import deepcopy
-from tempfile import TemporaryDirectory
 from typing import Any, Dict, List, NamedTuple, Set, Tuple, TypeVar, Union
 
 from .util import (
     EnvDict,
+    ExecuteError,
     SingletonABCMeta,
+    execute_env_script,
     final,  # Compatibility import
     merge_presets,
     override,  # Compatibility imports
@@ -111,7 +110,6 @@ class Toolkit(metaclass=ABCMeta):  # FIXME: Rename to Generator
         self.required_vars: Set[str] = (
             required_vars if required_vars is not None else set()
         )
-        self._MARKER = "=#= ENVIRONMENT =#="
         self._chain: Union[ToolkitChain, None] = None
         self._chain_idx: int = -1
         self._env_result: EnvDict = EnvDict()
@@ -165,7 +163,7 @@ class Toolkit(metaclass=ABCMeta):  # FIXME: Rename to Generator
         return
 
     @classmethod
-    def _from_args(cls, prefix: str, args: Namespace) -> "Toolkit":
+    def _from_args(cls, prefix: str, args: Union[Namespace, None]) -> "Toolkit":
         """Parse arguments from argument-parser and construct Toolkit for generation
         Only called from CLI if _get_argument_prefix return Non-empty string
         """
@@ -288,7 +286,10 @@ class Toolkit(metaclass=ABCMeta):  # FIXME: Rename to Generator
             pathvars |= {"PATH"}
 
             preenv = self._get_pre_environment()
-            postenv = self._execute_env_script(script, preenv)
+            try:
+                postenv = execute_env_script(script, preenv)
+            except ExecuteError as e:
+                raise ToolkitError from e
             env = postenv.diff(preenv, ignore=ignore, pathvars=pathvars)
         else:
             env = EnvDict()
@@ -308,80 +309,6 @@ class Toolkit(metaclass=ABCMeta):  # FIXME: Rename to Generator
         PATH-like variables should be modified with env_prepend_path method.
         """
         return
-
-    @final
-    def _execute_env_script(self, script: str, runenv: EnvDict) -> EnvDict:
-        """Execute environment script and return the environment difference in environment
-        run before and after the script
-        """
-
-        if not self.is_supported():
-            raise RuntimeError("Toolkit cannot execute on this platform...")
-
-        if platform.system() == "Windows":
-            script += f"\necho {self._MARKER}\n"
-            script += "\nset"
-        else:
-            script += f'\necho "{self._MARKER}"\n'
-            script += "\n/usr/bin/env"
-
-        debuglog = log.isEnabledFor(logging.DEBUG)
-
-        # print(f"Generate environment settings for: " + self.GetEnvScriptInfo())
-
-        is_win = platform.system() == "Windows"
-        if is_win:
-            script_name = "_checkenv.bat"
-        else:
-            script_name = "_checkenv.run"  # Let's not assume script type
-
-        dstenv = EnvDict()
-        with TemporaryDirectory() as tmpdir:
-            tmpfile = os.path.join(tmpdir, script_name)
-
-            with open(tmpfile, "w", encoding="utf-8") as f:
-                f.write(script)
-            if debuglog:
-                log.debug("Wrote script to: %s", tmpfile)
-                log.debug(script)
-
-            if not is_win:
-                st = os.stat(tmpfile)
-                os.chmod(tmpfile, st.st_mode | stat.S_IEXEC)
-
-            try:
-                output = (
-                    subprocess.check_output(tmpfile, env=dict(runenv))
-                    .decode()
-                    .splitlines()
-                )
-            except subprocess.CalledProcessError as err:
-                raise ToolkitError(
-                    "Failed to run environment script. Verify that correct version of tools installed in standard paths"
-                ) from err
-
-            found_marker = True
-            for line in output:
-                if not found_marker:
-                    if line == self._MARKER:
-                        found_marker = False
-                    elif debuglog:
-                        log.debug("> %s", line)  # Line from script
-                    continue
-
-                p = line.split("=", 1)
-                name = p[0]
-                val = p[1]
-
-                dstenv[name] = val
-
-        if not found_marker:
-            raise ToolkitError(
-                "No marker found when running script. Probably the script ended prematurely."
-            )
-        if not dstenv:
-            raise ToolkitError("Script did not write environment variables.")
-        return dstenv
 
     ############################################################
     # Preset CMake cache variables
